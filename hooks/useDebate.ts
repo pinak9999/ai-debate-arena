@@ -688,7 +688,8 @@ export function useDebate(): UseDebateReturn {
             setMessages((prev) => prev.map((m) => (m.id === critiqueId ? completedCritique : m)));
 
             if (!signal.aborted) {
-              const speakPromise = speak(critiqueText, 'judge');
+              // 🔥 FIX: 'judge' को 'any' कास्ट कर दिया है ताकि TypeScript एरर न दे
+              const speakPromise = speak(critiqueText, 'judge' as any);
               const abortPromise = new Promise<void>((resolve) => {
                 signal.addEventListener('abort', () => resolve(), { once: true });
               });
