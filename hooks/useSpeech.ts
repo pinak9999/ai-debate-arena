@@ -2,6 +2,9 @@
 
 import { useRef, useCallback, useState, useEffect } from 'react';
 
+// 🔥 FIX: 'judge' को SpeakerType में ऐड कर दिया गया है
+export type SpeakerType = 'proponent' | 'opponent' | 'judge';
+
 interface QueueItem {
   text: string;
   pitch: number;
@@ -53,9 +56,6 @@ export function useSpeech() {
       utterance.lang = 'hi-IN';
     } else {
       // ⚠️ No Hindi voice installed on this system.
-      // DO NOT force lang='hi-IN' with no matching voice — Chrome
-      // will often fail silently. Fall back to default voice so at
-      // least something is audible, and warn in console.
       console.warn(
         '[useSpeech] No hi-IN voice found on this system. ' +
         'Falling back to default voice. Install a Hindi voice via ' +
@@ -101,7 +101,8 @@ export function useSpeech() {
   }, []);
 
   const speak = useCallback(
-    (text: string, speaker?: 'proponent' | 'opponent'): Promise<void> => {
+    // 🔥 FIX: यहाँ SpeakerType का इस्तेमाल किया गया है
+    (text: string, speaker?: SpeakerType): Promise<void> => {
       if (isMutedRef.current || !text?.trim()) return Promise.resolve();
       if (typeof window === 'undefined' || !window.speechSynthesis) {
         console.warn('[useSpeech] speechSynthesis not supported in this browser.');
@@ -111,7 +112,8 @@ export function useSpeech() {
       return new Promise<void>((resolve) => {
         queueRef.current.push({
           text,
-          pitch: speaker === 'opponent' ? 0.85 : 1.15,
+          // 🔥 FIX: Judge के लिए अलग न्यूट्रल आवाज़ (Pitch 1.0)
+          pitch: speaker === 'opponent' ? 0.85 : speaker === 'judge' ? 1.0 : 1.15,
           resolve,
         });
         processQueue();
