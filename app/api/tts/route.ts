@@ -1,22 +1,24 @@
 import { NextResponse } from 'next/server';
 
+// 🔥 FIX: Vercel का default timeout सिर्फ 10 सेकंड होता है (Hobby plan)।
+// पहली (cold-start) ElevenLabs call अक्सर इससे ज़्यादा समय लेती है, इसलिए
+// Proponent (जो हमेशा पहले बोलता है) टाइमआउट होकर चुप रह जाता था।
+export const maxDuration = 60;
+
 export async function POST(req: Request) {
   try {
     const { text, speaker } = await req.json();
 
-    // 🔥 FIX 1: AI के टेक्स्ट से सारे स्पेशल कैरेक्टर्स साफ करना 
-    // (ताकि ElevenLabs बीच में बोलना बंद न करे)
     const cleanText = text
-      .replace(/[*#_]/g, '') // Markdown के स्टार हटाना
-      .replace(/\[.*?\]/g, '') // [UI_CHART] जैसे छुपे हुए टैग्स हटाना
+      .replace(/[*#_]/g, '')
+      .replace(/\[.*?\]/g, '')
       .trim();
 
     if (!cleanText) {
-      return new NextResponse(null, { status: 200 });
+      return NextResponse.json({ error: 'Empty text' }, { status: 400 });
     }
 
-    let voiceId = 'EXAVITQu4vr4xnSDxMaL'; // डिफ़ॉल्ट
-    
+    let voiceId = 'EXAVITQu4vr4xnSDxMaL';
     if (speaker === 'proponent') {
       voiceId = 'TxGEqnHWrfWFTfGW9XjX'; // Josh
     } else if (speaker === 'opponent') {
@@ -27,37 +29,60 @@ export async function POST(req: Request) {
 
     const apiKey = process.env.ELEVENLABS_API_KEY;
     if (!apiKey) {
+      console.error('[TTS] ELEVENLABS_API_KEY missing');
       return NextResponse.json({ error: 'ElevenLabs API Key missing' }, { status: 500 });
     }
 
-    const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}/stream`, {
-      method: 'POST',
-      headers: {
-        'Accept': 'audio/mpeg',
-        'xi-api-key': apiKey,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        text: cleanText,
-        model_id: 'eleven_multilingual_v2',
-        voice_settings: {
-          stability: 0.5,
-          similarity_boost: 0.75,
-        }
-      }),
-    });
+    // 🔥 FIX: Manual timeout controller ताकि हैंग होने की बजाय साफ़ error आए
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
 
-    if (!response.ok) {
-      throw new Error('ElevenLabs API error');
+    let response: Response;
+    try {
+      response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
+        method: 'POST',
+        headers: {
+          Accept: 'audio/mpeg',
+          'xi-api-key': apiKey,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          text: cleanText,
+          model_id: 'eleven_multilingual_v2',
+          voice_settings: {
+            stability: 0.5,
+            similarity_boost: 0.75,
+          },
+        }),
+        signal: controller.signal,
+      });
+    } finally {
+      clearTimeout(timeoutId);
     }
 
-    // 🔥 FIX 2: ऑडियो स्ट्रीम को डायरेक्ट पास करना ताकि टाइमआउट एरर न आए
-    return new NextResponse(response.body, {
-      headers: { 'Content-Type': 'audio/mpeg' },
+    if (!response.ok) {
+      const errorData = await response.text().catch(() => 'unknown');
+      console.error(`[TTS] ElevenLabs error for speaker=${speaker}:`, response.status, errorData);
+      return NextResponse.json({ error: 'ElevenLabs API error', details: errorData }, { status: 502 });
+    }
+
+    // 🔥 FIX: पूरी audio को buffer करके भेजना (streaming pass-through के बजाय)
+    // ताकि partial/cut audio Vercel edge पर कभी न फँसे
+    const arrayBuffer = await response.arrayBuffer();
+
+    if (arrayBuffer.byteLength === 0) {
+      console.error(`[TTS] Empty audio buffer received for speaker=${speaker}`);
+      return NextResponse.json({ error: 'Empty audio received from ElevenLabs' }, { status: 502 });
+    }
+
+    return new NextResponse(arrayBuffer, {
+      headers: {
+        'Content-Type': 'audio/mpeg',
+        'Content-Length': String(arrayBuffer.byteLength),
+      },
     });
-    
-  } catch (error) {
-    console.error('[TTS API Error]', error);
-    return NextResponse.json({ error: 'TTS Failed' }, { status: 500 });
+  } catch (error: any) {
+    console.error('[TTS API Fatal Error]', error?.message || error);
+    return NextResponse.json({ error: 'TTS Failed', details: String(error?.message || error) }, { status: 500 });
   }
 }

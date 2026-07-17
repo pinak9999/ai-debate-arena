@@ -18,18 +18,41 @@ export function useSpeech() {
   const processingRef = useRef(false);
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const isMutedRef = useRef(false);
-
-  // 🔥 FIX: हर नए item को एक यूनीक टोकन मिलेगा।
-  // पुराने (stale) audio/utterance का कोई भी late event (onerror/onend)
-  // इस टोकन के मैच न होने पर पूरी तरह IGNORE हो जाएगा।
   const playTokenRef = useRef(0);
 
-  // ─── टेक्स्ट को सुरक्षित टुकड़ों (Chunks) में तोड़ना (सिर्फ Browser Fallback Voice के लिए) ───
+  // 🔥 FIX 1: Voices को पेज लोड होते ही प्रीलोड कर लो।
+  // Chrome में अगर voices load होने से पहले speak() कॉल हो जाए,
+  // तो utterance बिना किसी error के चुपचाप गायब हो जाता है।
+  const voicesReadyRef = useRef(false);
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) return;
+
+    const loadVoices = () => {
+      const v = window.speechSynthesis.getVoices();
+      if (v.length > 0) voicesReadyRef.current = true;
+    };
+    loadVoices();
+    window.speechSynthesis.onvoiceschanged = loadVoices;
+
+    // 🔥 FIX 2: Chrome का एक और मशहूर बग — 15 सेकंड की चुप्पी के बाद
+    // speechSynthesis खुद-ब-खुद "pause" हो जाता है। हर 10 सेकंड पर
+    // resume() कॉल करते रहना इसे ज़िंदा रखता है।
+    const keepAlive = setInterval(() => {
+      if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+        window.speechSynthesis.pause();
+        window.speechSynthesis.resume();
+      }
+    }, 10000);
+
+    return () => {
+      clearInterval(keepAlive);
+    };
+  }, []);
+
   const splitTextIntoChunks = (str: string, maxLength: number = 150) => {
     const result: string[] = [];
     let current = '';
     const words = str.split(' ');
-
     for (const word of words) {
       if ((current + word).length > maxLength) {
         result.push(current.trim());
@@ -55,10 +78,16 @@ export function useSpeech() {
 
     const chunks = splitTextIntoChunks(text, 150);
     let currentChunk = 0;
+    let watchdog: ReturnType<typeof setTimeout> | null = null;
+
+    const clearWatchdog = () => {
+      if (watchdog) {
+        clearTimeout(watchdog);
+        watchdog = null;
+      }
+    };
 
     const speakNextChunk = () => {
-      // 🔥 अगर इस बीच कोई नया item queue में आ गया है (टोकन बदल गया), तो यह पुराना
-      // प्लेबैक तुरंत रुक जाएगा और दोबारा finishItem को कॉल नहीं करेगा।
       if (myToken !== playTokenRef.current) return;
 
       if (currentChunk >= chunks.length || isMutedRef.current) {
@@ -82,23 +111,49 @@ export function useSpeech() {
       utterance.pitch = speaker === 'opponent' ? 0.8 : speaker === 'judge' ? 0.9 : 1.1;
       utterance.rate = 1.0;
 
+      utterance.onstart = () => {
+        clearWatchdog();
+      };
+
       utterance.onend = () => {
-        if (myToken !== playTokenRef.current) return; // stale — ignore
+        clearWatchdog();
+        if (myToken !== playTokenRef.current) return;
         currentChunk++;
         speakNextChunk();
       };
 
       utterance.onerror = () => {
-        if (myToken !== playTokenRef.current) return; // stale — ignore
+        clearWatchdog();
+        if (myToken !== playTokenRef.current) return;
         currentChunk++;
         speakNextChunk();
       };
 
-      window.speechSynthesis.cancel();
-      setTimeout(() => {
+      // 🔥 FIX 3: पुराने कोड में हर chunk से पहले cancel() कॉल होता था,
+      // जो Chrome में नए utterance को "silently drop" कर देता है अगर
+      // ठीक उसी वक़्त कुछ चल रहा हो। अब सिर्फ तभी cancel करेंगे जब सच में
+      // कुछ बोल रहा हो, और उसके बाद थोड़ा ज़्यादा गैप देंगे।
+      const doSpeak = () => {
         if (myToken !== playTokenRef.current) return;
         window.speechSynthesis.speak(utterance);
-      }, 50);
+
+        // 🔥 FIX 4: Watchdog — अगर 4 सेकंड में onstart नहीं आया (यानी Chrome
+        // ने चुपचाप drop कर दिया), तो जबरदस्ती अगले chunk पर बढ़ जाओ ताकि
+        // पूरी debate कभी अटके नहीं।
+        watchdog = setTimeout(() => {
+          if (myToken !== playTokenRef.current) return;
+          console.warn('[useSpeech] Chrome dropped utterance silently, skipping chunk');
+          currentChunk++;
+          speakNextChunk();
+        }, 4000);
+      };
+
+      if (window.speechSynthesis.speaking || window.speechSynthesis.pending) {
+        window.speechSynthesis.cancel();
+        setTimeout(doSpeak, 120);
+      } else {
+        doSpeak();
+      }
     };
 
     speakNextChunk();
@@ -112,12 +167,9 @@ export function useSpeech() {
     processingRef.current = true;
     setIsSpeaking(true);
 
-    // 🔥 इस item के लिए नया यूनीक टोकन जनरेट करो
     playTokenRef.current += 1;
     const myToken = playTokenRef.current;
 
-    // 🔥 FIX (सबसे ज़रूरी): finishItem सिर्फ एक बार ही चलेगा,
-    // चाहे onended, onerror, या fallback — कोई भी उसे कितनी भी बार क्यों न बुलाए।
     let settled = false;
     const finishItem = () => {
       if (settled) return;
@@ -125,7 +177,7 @@ export function useSpeech() {
       currentAudioRef.current = null;
       processingRef.current = false;
       setIsSpeaking(false);
-      item.resolve(); // तभी अगला स्पीकर शुरू होगा
+      item.resolve();
       processQueue();
     };
 
@@ -143,14 +195,15 @@ export function useSpeech() {
 
       const contentType = res.headers.get('content-type');
       if (contentType && contentType.includes('application/json')) {
+        const errBody = await res.json().catch(() => ({}));
+        console.warn(`[useSpeech] TTS API returned error for ${item.speaker}:`, errBody);
         throw new Error('ElevenLabs API Error or Quota Exceeded');
       }
-      if (!res.ok) throw new Error('TTS fetch failed');
+      if (!res.ok) throw new Error(`TTS fetch failed with status ${res.status}`);
 
       const blob = await res.blob();
       if (blob.size === 0) throw new Error('Empty audio blob');
 
-      // 🔥 अगर इस बीच queue रीसेट/नया item आ गया है, तो यह पुराना ऑडियो बजाना ही नहीं
       if (myToken !== playTokenRef.current) return;
 
       const url = URL.createObjectURL(blob);
@@ -159,24 +212,21 @@ export function useSpeech() {
 
       audio.onended = () => {
         URL.revokeObjectURL(url);
-        if (myToken !== playTokenRef.current) return; // stale event — ignore
+        if (myToken !== playTokenRef.current) return;
         finishItem();
       };
 
       audio.onerror = () => {
         URL.revokeObjectURL(url);
-        if (myToken !== playTokenRef.current) return; // stale event — ignore
-        console.warn('Audio element error, using fallback...');
+        if (myToken !== playTokenRef.current) return;
+        console.warn(`[useSpeech] Audio element error for ${item.speaker}, using fallback...`);
         fallbackToBrowserVoice(item.text, item.speaker, myToken, finishItem);
       };
 
       await audio.play();
-      // ⚠️ ध्यान दें: audio.play() सिर्फ तभी resolve होता है जब playback SHURU होता है,
-      // यह audio खत्म होने का इंतज़ार नहीं करता। असली "खत्म होने" का सिग्नल
-      // ऊपर वाला audio.onended ही है — इसलिए यहाँ कुछ भी extra नहीं करना।
     } catch (err) {
-      if (myToken !== playTokenRef.current) return; // stale — ignore
-      console.warn('[useSpeech] Falling back to Browser TTS:', err);
+      if (myToken !== playTokenRef.current) return;
+      console.warn(`[useSpeech] Falling back to Browser TTS for ${item.speaker}:`, err);
       fallbackToBrowserVoice(item.text, item.speaker, myToken, finishItem);
     }
   }, []);
@@ -193,9 +243,7 @@ export function useSpeech() {
     [processQueue]
   );
 
-  // 🛑 AI को तुरंत चुप कराने के लिए (Interrupt / Reset)
   const stop = useCallback(() => {
-    // टोकन बढ़ा दो ताकि किसी भी चल रहे audio/utterance के late events ignore हो जाएँ
     playTokenRef.current += 1;
 
     queueRef.current.forEach((item) => item.resolve());
