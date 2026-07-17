@@ -19,6 +19,79 @@ export function useSpeech() {
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const isMutedRef = useRef(false);
 
+  // ─── SUPER FIX: टेक्स्ट को सुरक्षित टुकड़ों (Chunks) में तोड़ना ───
+  const splitTextIntoChunks = (str: string, maxLength: number = 150) => {
+    const result = [];
+    let current = '';
+    const words = str.split(' '); // शब्दों के आधार पर तोड़ें
+    
+    for (const word of words) {
+      if ((current + word).length > maxLength) {
+        result.push(current.trim());
+        current = word + ' ';
+      } else {
+        current += word + ' ';
+      }
+    }
+    if (current.trim()) result.push(current.trim());
+    return result;
+  };
+
+  const fallbackToBrowserVoice = (text: string, speaker: SpeakerType, onEnd: () => void) => {
+    if (typeof window === 'undefined' || !window.speechSynthesis) {
+      setTimeout(onEnd, 1000); 
+      return;
+    }
+
+    // 🔥 Chrome क्रैश बग को रोकने के लिए स्मार्ट चंकिंग (150 अक्षरों की लिमिट)
+    const chunks = splitTextIntoChunks(text, 150);
+    let currentChunk = 0;
+
+    const speakNextChunk = () => {
+      if (currentChunk >= chunks.length || isMutedRef.current) {
+        onEnd(); // सारे हिस्से खत्म होने पर ही अगली बारी आएगी!
+        return;
+      }
+
+      const chunkText = chunks[currentChunk];
+      if (!chunkText) {
+        currentChunk++;
+        speakNextChunk();
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(chunkText);
+      const voices = window.speechSynthesis.getVoices();
+      
+      // हिंदी आवाज़ को खोजना
+      const hindiVoice = voices.find((v) => v.lang.includes('hi') || v.lang.includes('HI') || v.lang === 'hi-IN');
+      if (hindiVoice) utterance.voice = hindiVoice;
+      
+      utterance.lang = 'hi-IN';
+      utterance.pitch = speaker === 'opponent' ? 0.8 : speaker === 'judge' ? 0.9 : 1.1; 
+      utterance.rate = 1.0;
+
+      utterance.onend = () => {
+        currentChunk++;
+        speakNextChunk(); // एक वाक्य खत्म होने पर दूसरा शुरू
+      };
+
+      utterance.onerror = (e) => {
+        console.warn("Browser TTS chunk error, skipping to next...", e);
+        currentChunk++;
+        speakNextChunk(); // एरर आने पर अटकेगा नहीं
+      };
+
+      // 🔥 Chrome Bug Fix: बोलने से पहले पुरानी आवाज़ को कैंसिल करना ज़रूरी है
+      window.speechSynthesis.cancel();
+      setTimeout(() => {
+        window.speechSynthesis.speak(utterance);
+      }, 50); // छोटा सा डिले ताकि ब्राउज़र तैयार हो सके
+    };
+
+    speakNextChunk();
+  };
+
   const processQueue = useCallback(async () => {
     if (processingRef.current) return;
     const item = queueRef.current.shift();
@@ -27,49 +100,56 @@ export function useSpeech() {
     processingRef.current = true;
     setIsSpeaking(true);
 
+    const finishItem = () => {
+      currentAudioRef.current = null;
+      processingRef.current = false;
+      setIsSpeaking(false);
+      item.resolve(); // 🔥 यह कॉल होने पर ही अगला एजेंट चालू होगा!
+      processQueue(); 
+    };
+
+    if (isMutedRef.current) {
+      finishItem();
+      return;
+    }
+
     try {
-      // 🚀 Backend API को कॉल करें जहाँ से असली आवाज़ आएगी
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: item.text, speaker: item.speaker })
       });
 
+      const contentType = res.headers.get('content-type');
+      if (contentType && contentType.includes('application/json')) {
+        throw new Error('ElevenLabs API Error or Quota Exceeded');
+      }
+
       if (!res.ok) throw new Error('TTS fetch failed');
 
       const blob = await res.blob();
+      if (blob.size === 0) throw new Error('Empty audio blob');
+
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       currentAudioRef.current = audio;
 
-      // ऑडियो खत्म होने पर अगला प्रोसेस करें
       audio.onended = () => {
         URL.revokeObjectURL(url);
-        finishItem();
+        finishItem(); 
       };
 
       audio.onerror = () => {
         URL.revokeObjectURL(url);
-        finishItem();
+        console.warn('Audio element error, using fallback...');
+        fallbackToBrowserVoice(item.text, item.speaker, finishItem);
       };
 
-      if (!isMutedRef.current) {
-        await audio.play();
-      } else {
-        finishItem();
-      }
+      await audio.play();
 
     } catch (err) {
-      console.error('[useSpeech] Error playing ElevenLabs audio:', err);
-      finishItem();
-    }
-
-    function finishItem() {
-      currentAudioRef.current = null;
-      processingRef.current = false;
-      setIsSpeaking(false);
-      item?.resolve();
-      processQueue(); // कतार (Queue) में अगला मैसेज चेक करें
+      console.warn('[useSpeech] Falling back to Browser TTS:', err);
+      fallbackToBrowserVoice(item.text, item.speaker, finishItem);
     }
   }, []);
 
@@ -82,7 +162,6 @@ export function useSpeech() {
     });
   }, [processQueue]);
 
-  // 🛑 AI को तुरंत चुप कराने के लिए (Interrupt)
   const stop = useCallback(() => {
     queueRef.current.forEach(item => item.resolve());
     queueRef.current = [];
@@ -93,6 +172,10 @@ export function useSpeech() {
       currentAudioRef.current.pause();
       currentAudioRef.current.src = '';
       currentAudioRef.current = null;
+    }
+    
+    if (typeof window !== 'undefined' && window.speechSynthesis) {
+      window.speechSynthesis.cancel(); 
     }
   }, []);
 
@@ -106,7 +189,7 @@ export function useSpeech() {
   }, [stop]);
 
   useEffect(() => {
-    return () => stop(); // कंपोनेंट अनमाउंट होने पर ऑडियो रोकें
+    return () => stop();
   }, [stop]);
 
   return { speak, stop, isSpeaking, isMuted, toggleMute };
