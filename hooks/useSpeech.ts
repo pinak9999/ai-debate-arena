@@ -68,7 +68,7 @@ export function useSpeech() {
       currentAudioRef.current = null;
       processingRef.current = false;
       setIsSpeaking(false);
-      item.resolve();
+      item?.resolve();
       processQueue(); // कतार (Queue) में अगला मैसेज चेक करें
     }
   }, []);

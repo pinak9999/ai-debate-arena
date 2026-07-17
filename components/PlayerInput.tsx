@@ -13,6 +13,9 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
   const [value, setValue] = useState('');
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
+  
+  // 🔥 FIX: माइक चालू करने से पहले का टेक्स्ट सेव रखने के लिए
+  const initialTextRef = useRef('');
 
   // ─── Computer Vision (Webcam & AI) States ───
   const webcamRef = useRef<Webcam>(null);
@@ -20,45 +23,36 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
   const [modelsLoaded, setModelsLoaded] = useState(false);
   const [confidenceScore, setConfidenceScore] = useState<number>(100);
 
-  // ─── लोड Face-API मॉडल्स (Dynamically) ───
   useEffect(() => {
     const loadModels = async () => {
       try {
-        // 🔥 FIX: डायनामिक इम्पोर्ट का इस्तेमाल ताकि यह सर्वर पर क्रैश न हो
         const faceapi = await import('@vladmandic/face-api');
-        
         await faceapi.nets.tinyFaceDetector.loadFromUri('/models');
         await faceapi.nets.faceExpressionNet.loadFromUri('/models');
         setModelsLoaded(true);
       } catch (err) {
-        console.error("Face API मॉडल्स लोड होने में दिक्कत: ", err);
+        console.error("Face API Load Error: ", err);
       }
     };
     loadModels();
   }, []);
 
-  // ─── फेशियल एक्सप्रेशन एनालिसिस (हर 1 सेकंड में) ───
   useEffect(() => {
     let interval: NodeJS.Timeout;
     if (isWebcamActive && modelsLoaded) {
       interval = setInterval(async () => {
         if (webcamRef.current && webcamRef.current.video && webcamRef.current.video.readyState === 4) {
           const video = webcamRef.current.video;
-          
-          // 🔥 FIX: डायनामिक इम्पोर्ट यहाँ भी
           const faceapi = await import('@vladmandic/face-api');
           const detections = await faceapi.detectSingleFace(video, new faceapi.TinyFaceDetectorOptions()).withFaceExpressions();
           
           if (detections) {
             const expr = detections.expressions;
-            // कॉन्फिडेंस कैलकुलेशन: (Happy + Neutral) vs (Fearful + Sad + Surprised + Nervous/Angry)
             const positive = (expr.neutral || 0) + (expr.happy || 0);
             const negative = (expr.fearful || 0) + (expr.sad || 0) + (expr.surprised || 0) + (expr.angry || 0);
             
             let score = Math.round((positive / (positive + negative)) * 100);
             if (isNaN(score)) score = 50;
-            
-            // स्मूथ ट्रांजीशन के लिए
             setConfidenceScore(prev => Math.round((prev + score) / 2));
           }
         }
@@ -68,7 +62,6 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
   }, [isWebcamActive, modelsLoaded]);
 
   useEffect(() => {
-    // ─── Speech Recognition सेटअप ───
     if (typeof window !== 'undefined') {
       const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
       
@@ -79,15 +72,13 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
         recognition.lang = 'hi-IN';
 
         recognition.onresult = (event: any) => {
-          let finalTranscript = '';
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              finalTranscript += event.results[i][0].transcript;
-            }
+          // 🔥 FIX: Infinity Loop खत्म करने के लिए पूरा ट्रांसक्रिप्ट एक साथ जोड़ें
+          let currentTranscript = '';
+          for (let i = 0; i < event.results.length; ++i) {
+            currentTranscript += event.results[i][0].transcript;
           }
-          if (finalTranscript) {
-            setValue((prev) => prev + ' ' + finalTranscript.trim());
-          }
+          // पहले से टाइप किये टेक्स्ट के साथ नया बोला हुआ टेक्स्ट जोड़ें
+          setValue(initialTextRef.current + currentTranscript);
         };
 
         recognition.onerror = (e: any) => {
@@ -114,7 +105,8 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel(); 
       }
-      setValue('');
+      // 🔥 FIX: माइक चालू करते समय पुराना टेक्स्ट सेव कर लें
+      initialTextRef.current = value.trim() ? value.trim() + ' ' : '';
       recognitionRef.current?.start();
       setIsListening(true);
     }
@@ -131,7 +123,6 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
       setIsListening(false);
     }
 
-    // 🔥 AI को सीक्रेट सिस्टम नोट भेजना ताकि वह आपके कॉन्फिडेंस पर रिएक्ट कर सके!
     let finalArgument = value.trim();
     if (isWebcamActive) {
       const tauntInstruction = confidenceScore < 50 
@@ -143,6 +134,7 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
 
     onSubmit(finalArgument);
     setValue('');
+    initialTextRef.current = '';
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -164,7 +156,6 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
           )}
         </p>
 
-        {/* ── लाइव स्ट्रेस मीटर ── */}
         {isWebcamActive && (
           <div className="flex items-center gap-2">
             <Activity className={`w-4 h-4 ${confidenceScore > 60 ? 'text-emerald-400' : 'text-rose-400'}`} />
@@ -182,8 +173,6 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
       </div>
 
       <div className="flex gap-3 items-end">
-        
-        {/* 📷 Webcam Toggle Button */}
         <button
           type="button"
           onClick={handleToggleWebcam}
@@ -193,7 +182,6 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
           {isWebcamActive ? <Camera className="w-5 h-5" /> : <CameraOff className="w-5 h-5" />}
         </button>
 
-        {/* 🎤 Mic Button */}
         <button
           type="button"
           onClick={handleToggleMic}
@@ -203,7 +191,6 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
           {isListening ? <MicOff className="w-5 h-5 animate-pulse" /> : <Mic className="w-5 h-5" />}
         </button>
 
-        {/* ── Webcam Feed UI ── */}
         {isWebcamActive && (
           <div className="relative w-16 h-14 rounded-lg overflow-hidden border border-white/20 shrink-0 bg-black">
             <Webcam
