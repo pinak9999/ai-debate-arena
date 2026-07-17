@@ -47,7 +47,7 @@ function toManualTextStream(text: string): Response {
   });
 }
 
-// ─── WIKIPEDIA GROUNDING (RAG) — Topic Mode (unchanged) ───
+// ─── WIKIPEDIA GROUNDING (RAG) — Topic Mode ───
 
 async function searchWiki(lang: 'hi' | 'en', q: string) {
   try {
@@ -88,7 +88,7 @@ async function extractSearchCandidates(text: string): Promise<string[]> {
   try {
     const { text: raw } = await generateText({
       model: groq('llama-3.1-8b-instant'),
-      // 🔥 FIX 1: Removed misleading examples (like Swachh Bharat) to prevent Hallucination
+      temperature: 0.1,
       prompt: `Analyze this Hindi text and extract up to 3 real, independently searchable named entities (people, places, historical events, organizations, or policies). 
 CRITICAL RULES:
 - IGNORE conversational filler, debate terms, and titles completely (e.g., DO NOT extract "माननीय जज", "विरोधाभास", "Opponent").
@@ -115,7 +115,7 @@ async function groundWithCandidates(text: string): Promise<{ title: string; snip
   return null;
 }
 
-// ─── TAVILY LIVE WEB SEARCH GROUNDING (Personality Mode + Fact-Check upgrade) ───
+// ─── TAVILY LIVE WEB SEARCH GROUNDING ───
 
 interface TavilySource {
   title: string;
@@ -211,7 +211,11 @@ RULES:
 - Format: {"hasChart": true, "title": "छोटा शीर्षक", "type": "bar_chart", "data": [{"name": "नाम 1", "value": 40}, {"name": "नाम 2", "value": 60}]}
 - If no valid comparison, respond ONLY: {"hasChart": false}`;
 
-    const { text: raw } = await generateText({ model: groq('llama-3.1-8b-instant'), prompt });
+    const { text: raw } = await generateText({ 
+      model: groq('llama-3.1-8b-instant'), 
+      temperature: 0.1,
+      prompt 
+    });
     const parsed = safeJsonParse<any>(raw, { hasChart: false });
 
     if (!parsed?.hasChart || !Array.isArray(parsed.data) || parsed.data.length < 2) return null;
@@ -240,7 +244,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json();
 
     // ─────────────────────────────────────────────────────────────────
-    // 0. STOCK DATA (Live Intraday feed for Financial War-Room mode)
+    // 0. STOCK DATA
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'stock_data') {
       const { symbol } = body;
@@ -342,7 +346,6 @@ Use these EXACT numbers naturally in your argument.`
           : `Rely on strong logical deduction.`;
       }
 
-      // 🔥 FIX 2: Added Rule 5 to completely stop Meta-Debating
       const antiRepetitionRule = `
 CRITICAL DEBATE RULES:
 1. NEVER start your response with "माननीय जज", "अध्यक्ष महोदय", or polite greetings. Jump directly into your argument naturally.
@@ -391,30 +394,35 @@ CRITICAL DEBATE RULES:
           isStockMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
+                temperature: 0.3,
                 prompt: `Identify ONE fundamental risk opposing a bullish case for "${topic}". 1-2 Hindi sentences.`,
               })
             : isPersonalityMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
+                temperature: 0.3,
                 prompt: `Identify ONE ethical concern the proponent's argument on "${topic}" overlooks. 1-2 Hindi sentences.`,
               })
             : generateText({
                 model: groq('llama-3.1-8b-instant'),
+                temperature: 0.3,
                 prompt: `Find ONE factual counter-point to the proponent's claims on "${topic}":\n${opponentHistory}`,
               }),
           isStockMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
+                temperature: 0.3,
                 prompt: `Identify ONE valuation/technical weakness in the bull's LATEST argument on "${topic}":\n${opponentHistory}`,
               })
             : isPersonalityMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
+                temperature: 0.3,
                 prompt: `Identify ONE historical/philosophical principle that challenges the proponent's claim on "${topic}":\n${opponentHistory}`,
               })
             : generateText({
                 model: groq('llama-3.1-8b-instant'),
-                // 🔥 FIX 3: Stop Logic Agent from returning Fallacy Names
+                temperature: 0.3,
                 prompt: `Identify the main logical flaw or weak assumption in the proponent's LATEST argument on "${topic}". Explain the flaw in 1-2 Hindi sentences WITHOUT using academic fallacy names (like ad-hoc, strawman):\n${opponentHistory}`,
               }),
         ]);
@@ -446,8 +454,10 @@ ${roundInstruction}
 Language: STRICTLY HINDI (DEVANAGARI). Highly intellectual and sharp tone.
           `.trim();
 
+        // 🔥 FIX 1: AI को हकलाने से रोकने के लिए सिर्फ temperature का इस्तेमाल
         const { text: swarmRaw } = await generateText({
           model: groq('llama-3.1-8b-instant'),
+          temperature: 0.5,
           system: leaderSystemPrompt,
           messages: [...messages, { role: 'user', content: `Respond directly in Hindi. Remember: Do NOT use "माननीय जज". Do NOT agree with the opponent.` }] as any,
         });
@@ -488,6 +498,7 @@ Language: STRICTLY HINDI (DEVANAGARI). Professional, persuasive.
 
       const { text: initialDraft } = await generateText({
         model: groq('llama-3.1-8b-instant'),
+        temperature: 0.5,
         system: systemPrompt,
         messages: draftMessages as any,
       });
@@ -498,7 +509,11 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
         : `Check this draft. Does it strictly defend its stance? Did it avoid agreeing with the opponent? Did it avoid robotic greetings like "माननीय जज" and academic fallacy names? Draft: "${initialDraft}"
 Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason in hindi"}.`;
 
-      const { text: criticOutput } = await generateText({ model: groq('llama-3.1-8b-instant'), prompt: criticPrompt });
+      const { text: criticOutput } = await generateText({ 
+        model: groq('llama-3.1-8b-instant'), 
+        temperature: 0.1, 
+        prompt: criticPrompt 
+      });
       const evaluation = safeJsonParse(criticOutput, { approved: true, feedback: 'Perfect' });
 
       let finalDraft = initialDraft;
@@ -508,8 +523,10 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
           { role: 'assistant', content: initialDraft },
           { role: 'user', content: `CRITIC FEEDBACK: "${evaluation.feedback}". Fix the flaws, drop any robotic greetings, and provide a sharp response in Hindi.` },
         ];
+        
         const { text: rewrittenDraft } = await generateText({
           model: groq('llama-3.1-8b-instant'),
+          temperature: 0.5,
           system: systemPrompt,
           messages: finalMessages as any,
         });
@@ -531,7 +548,11 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
         ? ' Judge purely on logical strength and evidence — do not favor either the aggressive/data-driven style or the philosophical style.'
         : '';
       const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback in HINDI (DEVANAGARI) under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
-      const { text } = await generateText({ model: groq('llama-3.1-8b-instant'), prompt: critiquePrompt });
+      const { text } = await generateText({ 
+        model: groq('llama-3.1-8b-instant'), 
+        temperature: 0.4,
+        prompt: critiquePrompt 
+      });
       return NextResponse.json({ critique: stripFakeCitations(text) });
     }
 
@@ -546,7 +567,11 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
       const judgePrompt = `Evaluate the debate on Topic: "${topic}"${biasNote}\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}
 Respond STRICTLY with JSON ONLY:
 {"winner":"proponent/opponent/tie","score_proponent":85,"score_opponent":80,"reasoning":"hindi summary of why they won"}`;
-      const { text } = await generateText({ model: groq('llama-3.1-8b-instant'), prompt: judgePrompt });
+      const { text } = await generateText({ 
+        model: groq('llama-3.1-8b-instant'), 
+        temperature: 0.3,
+        prompt: judgePrompt 
+      });
       const object = safeJsonParse(text, { winner: 'tie', score_proponent: 50, score_opponent: 50, reasoning: 'मुकाबला बराबरी का रहा।' });
       return NextResponse.json({
         type: 'verdict',
@@ -565,13 +590,17 @@ Respond STRICTLY with JSON ONLY:
     if (body.type === 'round_score') {
       const { topic, history = [], round } = body;
       const prompt = `Topic: "${topic}". Rate round ${round}.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n')}\nRespond STRICTLY with JSON ONLY: {"pro": 75, "opp": 80}`;
-      const { text } = await generateText({ model: groq('llama-3.1-8b-instant'), prompt });
+      const { text } = await generateText({ 
+        model: groq('llama-3.1-8b-instant'), 
+        temperature: 0.1,
+        prompt 
+      });
       const parsed = safeJsonParse(text, { pro: 50, opp: 50 });
       return NextResponse.json(parsed);
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // 5. FALLACY & TONE CHECK (Upgraded)
+    // 5. FALLACY & TONE CHECK
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text } = body;
@@ -583,7 +612,11 @@ Statement: "${text}"
 
 Respond STRICTLY with JSON ONLY using this format:
 {"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation in Hindi", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
-      const { text: result } = await generateText({ model: groq('llama-3.1-8b-instant'), prompt });
+      const { text: result } = await generateText({ 
+        model: groq('llama-3.1-8b-instant'), 
+        temperature: 0.2,
+        prompt 
+      });
       
       const parsed = safeJsonParse(result, { 
         hasFallacy: false, 
