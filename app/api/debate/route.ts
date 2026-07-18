@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
 import { createGroq } from '@ai-sdk/groq';
+
 // 🔥 VERCEL TIMEOUT FIX: इसे Edge Runtime पर सेट करें ताकि 10 सेकंड में कनेक्शन न कटे
 export const runtime = 'edge'; 
 export const maxDuration = 60; // (ये Pro plan के लिए है, पर लिखे रहने दो)
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
 });
-
-
 
 // ─── UTILITY FUNCTIONS ───
 
@@ -348,13 +347,14 @@ Use these EXACT numbers naturally in your argument.`
           : `Rely on strong logical deduction.`;
       }
 
+      // 🔥 FIX 1: STRICT ANTI-REPETITION RULE
       const antiRepetitionRule = `
 CRITICAL DEBATE RULES:
 1. NEVER start your response with "माननीय जज", "अध्यक्ष महोदय", or polite greetings. Jump directly into your argument naturally.
-2. NEVER say "मैं सहमत हूँ" (I agree) or concede to your opponent. You must fiercely defend your stance.
-3. Stay strictly focused on the core topic: "${topic}". DO NOT hallucinate unrelated data.
-4. Do not recycle the exact same statistics from previous rounds.
-5. DO NOT use meta-debate terms. NEVER explicitly name logical fallacies like "Ad-hoc fallacy", "Strawman", or "Ad Hominem". Just break their logic naturally.
+2. NEVER CONCEDE. Never say "मैं सहमत हूँ" or adopt the opponent's conclusion. You must fiercely defend your stance.
+3. STRICT ANTI-REPETITION: DO NOT copy-paste sentences or exact phrases from previous rounds. You MUST bring a NEW logical angle, NEW risk, or NEW metric in every single round.
+4. If you repeat the exact same sentence as Round 1, you will be penalized. Evolve the argument.
+5. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", or "Opponent's logic". Just destroy their logic naturally.
       `.trim();
 
       let roundInstruction = '';
@@ -392,43 +392,45 @@ CRITICAL DEBATE RULES:
       if (speaker === 'opponent') {
         const opponentHistory = history.map((msg: { speaker: string; text: string }) => `[${msg.speaker}]: ${msg.text}`).join('\n');
 
+        // 🔥 FIX 2: INCREASED TEMPERATURE TO 0.6 FOR MORE CREATIVITY
         const [dataAgentCall, logicAgentCall] = await Promise.all([
           isStockMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
-                temperature: 0.3,
-                prompt: `Identify ONE fundamental risk opposing a bullish case for "${topic}". 1-2 Hindi sentences.`,
+                temperature: 0.6,
+                prompt: `Identify ONE NEW fundamental risk opposing a bullish case for "${topic}". Do not repeat previous risks. 1-2 Hindi sentences.`,
               })
             : isPersonalityMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
-                temperature: 0.3,
+                temperature: 0.6,
                 prompt: `Identify ONE ethical concern the proponent's argument on "${topic}" overlooks. 1-2 Hindi sentences.`,
               })
             : generateText({
                 model: groq('llama-3.1-8b-instant'),
-                temperature: 0.3,
+                temperature: 0.6,
                 prompt: `Find ONE factual counter-point to the proponent's claims on "${topic}":\n${opponentHistory}`,
               }),
           isStockMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
-                temperature: 0.3,
-                prompt: `Identify ONE valuation/technical weakness in the bull's LATEST argument on "${topic}":\n${opponentHistory}`,
+                temperature: 0.6,
+                prompt: `Identify ONE NEW valuation/technical weakness in the bull's LATEST argument on "${topic}". Do not repeat previous weaknesses:\n${opponentHistory}`,
               })
             : isPersonalityMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
-                temperature: 0.3,
+                temperature: 0.6,
                 prompt: `Identify ONE historical/philosophical principle that challenges the proponent's claim on "${topic}":\n${opponentHistory}`,
               })
             : generateText({
                 model: groq('llama-3.1-8b-instant'),
-                temperature: 0.3,
+                temperature: 0.6,
                 prompt: `Identify the main logical flaw or weak assumption in the proponent's LATEST argument on "${topic}". Explain the flaw in 1-2 Hindi sentences WITHOUT using academic fallacy names (like ad-hoc, strawman):\n${opponentHistory}`,
               }),
         ]);
 
+        // 🔥 FIX 3: ADDED STRICT "NEVER CONCLUDE IT WILL RECOVER" RULE FOR THE BEAR
         const leaderSystemPrompt = isStockMode
           ? `
 You are a CAUTIOUS RISK MANAGER (BEAR) for "${topic}".
@@ -436,6 +438,7 @@ ${groundingBlock}
 Sub-agent inputs: Fundamental Risk: "${dataAgentCall.text}" | Valuation Risk: "${logicAgentCall.text}"
 ${antiRepetitionRule}
 ${roundInstruction}
+CRITICAL: You are the BEAR. NEVER conclude that the stock will recover. Always conclude it is a risk.
 Language: STRICTLY HINDI (DEVANAGARI). Sound professional, not a cheerleader.
           `.trim()
           : isPersonalityMode
@@ -456,10 +459,9 @@ ${roundInstruction}
 Language: STRICTLY HINDI (DEVANAGARI). Highly intellectual and sharp tone.
           `.trim();
 
-        // 🔥 FIX 1: AI को हकलाने से रोकने के लिए सिर्फ temperature का इस्तेमाल
         const { text: swarmRaw } = await generateText({
           model: groq('llama-3.1-8b-instant'),
-          temperature: 0.5,
+          temperature: 0.7, // 🔥 Leader Temperature increased
           system: leaderSystemPrompt,
           messages: [...messages, { role: 'user', content: `Respond directly in Hindi. Remember: Do NOT use "माननीय जज". Do NOT agree with the opponent.` }] as any,
         });
@@ -498,9 +500,10 @@ Language: STRICTLY HINDI (DEVANAGARI). Professional, persuasive.
 
       const draftMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly in Hindi without formal greetings.` }];
 
+      // 🔥 FIX 4: TEMPERATURE INCREASED TO 0.7 TO STOP REPETITION
       const { text: initialDraft } = await generateText({
         model: groq('llama-3.1-8b-instant'),
-        temperature: 0.5,
+        temperature: 0.7, 
         system: systemPrompt,
         messages: draftMessages as any,
       });
@@ -528,7 +531,7 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
         
         const { text: rewrittenDraft } = await generateText({
           model: groq('llama-3.1-8b-instant'),
-          temperature: 0.5,
+          temperature: 0.7, // 🔥 Rewriter temperature increased too
           system: systemPrompt,
           messages: finalMessages as any,
         });
@@ -566,9 +569,17 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
       const biasNote = mode === 'personality'
         ? '\nIMPORTANT: You must remain STRICTLY NEUTRAL between the Aggressive Data-Driven debater and the Philosophical debater. Score based ONLY on logical strength, evidence, and direct engagement with the opponent — never based on which communication style you personally find more persuasive.'
         : '';
-      const judgePrompt = `Evaluate the debate on Topic: "${topic}"${biasNote}\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}
+      
+      // 🔥 FIX 5: ADDED STRICT PENALTY RULE FOR JUDGE
+      const judgePrompt = `Evaluate the debate on Topic: "${topic}"${biasNote}
+Transcript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}
+
+CRITICAL RULE FOR SCORING:
+If any speaker has a "[SYSTEM NOTE: PENALTY APPLIED...]" tag in their transcript, you MUST strictly deduct that exact number of points from their final 'logic' and 'overall' score.
+
 Respond STRICTLY with JSON ONLY:
-{"winner":"proponent/opponent/tie","score_proponent":85,"score_opponent":80,"reasoning":"hindi summary of why they won"}`;
+{"winner":"proponent/opponent/tie","score_proponent":85,"score_opponent":80,"reasoning":"hindi summary of why they won, explicitly mentioning any penalties if applied."}`;
+      
       const { text } = await generateText({ 
         model: groq('llama-3.1-8b-instant'), 
         temperature: 0.3,
