@@ -613,21 +613,31 @@ Respond STRICTLY with JSON ONLY:
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // 5. FALLACY & TONE CHECK
+    // 5. FALLACY & TONE CHECK (WITH TOPIC DRIFT DETECTION)
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
-      const { text } = body;
-      const prompt = `Analyze this Hindi statement for logical fallacies (e.g., Strawman, Ad Hominem, Red Herring), sentiment, and tone.
-Calculate an 'Aggression Score' (0-100, where 100 is extremely aggressive/hostile and 0 is calm/polite) and a 'Logic Score' (0-100, where 100 is perfectly logical and data-driven).
-If a logical fallacy is detected, assign a 'penalty' score (e.g., 5 to 15 points) which the judge will deduct.
+      const { text, topic } = body; // 🔥 Extracted topic
+      
+      const prompt = `You are a strict NLP logic analyzer.
+Analyze this Hindi statement against the MAIN TOPIC: "${topic || 'General Debate'}".
+
+CRITICAL TASK: TOPIC DRIFT (TANGENT)
+If the statement starts rambling about concepts highly unrelated to the main topic (e.g., tech infrastructure in a philosophy debate), you MUST flag it as a fallacy.
+- Fallacy Name: "Off-Topic Tangent"
+- Penalty: 15
+- Explanation: Explain in Hindi how it drifted from the main topic.
+
+If it is on-topic, check for standard fallacies (Strawman, Ad Hominem, Red Herring, etc.) and assign a 5-10 point penalty if found.
+Calculate 'Aggression Score' (0-100, 100=hostile) and 'Logic Score' (0-100, 100=perfectly logical).
 
 Statement: "${text}"
 
 Respond STRICTLY with JSON ONLY using this format:
 {"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation in Hindi", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
+
       const { text: result } = await generateText({ 
         model: groq('llama-3.1-8b-instant'), 
-        temperature: 0.2,
+        temperature: 0.1, // Strict logic checking
         prompt 
       });
       

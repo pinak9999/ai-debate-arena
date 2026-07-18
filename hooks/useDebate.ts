@@ -425,12 +425,13 @@ export function useDebate(): UseDebateReturn {
     []
   );
 
-  const runFallacyCheck = useCallback((messageId: string, text: string) => {
-    addLog(`[NLP Engine] Scanning argument for fallacies & analyzing tone...`, 'fallacy');
+  // 🔥 FIX: Added 'currentTopic' parameter to check for Topic Drift
+  const runFallacyCheck = useCallback((messageId: string, text: string, currentTopic: string) => {
+    addLog(`[NLP Engine] Scanning argument for fallacies & topic drift...`, 'fallacy');
     fetch(API_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'fallacy_check', text }),
+      body: JSON.stringify({ type: 'fallacy_check', text, topic: currentTopic }),
     })
       .then((res) => res.json())
       .then((result: FallacyResult) => {
@@ -646,8 +647,8 @@ export function useDebate(): UseDebateReturn {
             streamingTextRef.current = '';
 
             if (mode === 'spectator' || speaker === 'opponent') {
-              // Fact-check और Fallacy Check सिर्फ असली टेक्स्ट (cleanText) पर होगा, सीक्रेट डेटा पर नहीं
-              runFallacyCheck(messageId, cleanText);
+              // 🔥 FIX: Fact-check और Fallacy Check में config.topic भेजा जा रहा है
+              runFallacyCheck(messageId, cleanText, config.topic);
               runFactCheck(messageId, cleanText);
             }
 
