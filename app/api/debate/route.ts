@@ -85,23 +85,26 @@ async function fetchWikiSnippet(query: string): Promise<{ title: string; snippet
   }
 }
 
+// 🔥 FIX 1: Fact-Checker को जेनेरिक नाम की जगह "असली दावे (Claims)" खोजने के लिए स्मार्ट बनाया गया है
 async function extractSearchCandidates(text: string): Promise<string[]> {
   try {
     const { text: raw } = await generateText({
       model: groq('llama-3.1-8b-instant'),
       temperature: 0.1,
-      prompt: `Analyze this Hindi text and extract up to 3 real, independently searchable named entities (people, places, historical events, organizations, or policies). 
+      prompt: `Analyze this Hindi text and extract the most specific, verifiable FACTUAL CLAIM (like statistics, dates, percentages, or specific historical events). 
 CRITICAL RULES:
-- IGNORE conversational filler, debate terms, and titles completely (e.g., DO NOT extract "माननीय जज", "विरोधाभास", "Opponent").
-- ONLY extract the actual factual entities mentioned in the text.
-- Output ONLY the names, one per line, without numbering, bullets, or extra words. 
-Text: "${text}"`,
+- Do NOT just extract names of people or countries. 
+- Convert the claim into a short, precise English search query.
+Example Input: "2013-14 से 2016-17 के बीच विकास दर में 3.6% की गिरावट आई।"
+Example Output: India GDP growth rate 2013 to 2017
+Text: "${text}"
+Output ONLY 1-2 search queries, one per line, without numbering or bullets.`,
     });
     return raw
       .split('\n')
       .map((s) => s.replace(/^[-*\d.)\s]+/, '').trim())
       .filter(Boolean)
-      .slice(0, 3);
+      .slice(0, 2);
   } catch {
     return [];
   }
@@ -245,7 +248,6 @@ interface AudienceScore {
   opp: number;
 }
 
-// 🔥 NEW: सुनिश्चित करता है कि audienceScore malformed/undefined आने पर भी कोड क्रैश न हो
 function isValidAudienceScore(value: any): value is AudienceScore {
   return (
     value &&
@@ -256,8 +258,6 @@ function isValidAudienceScore(value: any): value is AudienceScore {
   );
 }
 
-// 🔥 NEW: AUDIENCE-RESPONSIVE AI STRATEGY (RL PROMPTING)
-// पहले राउंड में स्कोर हमेशा 50-50 होता है (डिफ़ॉल्ट), इसलिए राउंड 2 से ही स्ट्रैटेजी बदलती है।
 function buildRLInstruction(
   audienceScore: unknown,
   round: number,
@@ -348,7 +348,6 @@ export async function POST(req: NextRequest) {
     // 1. DEBATE TURN
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'debate_turn') {
-      // 🔥 audienceScore जोड़ा
       const { topic, round, totalRounds, speaker, history = [], mode = 'topic', stockContext, audienceScore } = body;
       if (!topic || !speaker || !round) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
@@ -386,7 +385,6 @@ Use these EXACT numbers naturally in your argument.`
           : `Rely on strong logical deduction.`;
       }
 
-      // STRICT ANTI-REPETITION RULE
       const antiRepetitionRule = `
 CRITICAL DEBATE RULES:
 1. NEVER start your response with "माननीय जज", "अध्यक्ष महोदय", or polite greetings. Jump directly into your argument naturally.
@@ -427,7 +425,6 @@ CRITICAL DEBATE RULES:
         }
       }
 
-      // 🔥 NEW: AUDIENCE-RESPONSIVE AI STRATEGY (RL PROMPTING)
       const rlInstruction = buildRLInstruction(audienceScore, round, speaker);
 
       // ─── OPPONENT: SWARM AGENT ───
@@ -656,44 +653,41 @@ Respond STRICTLY with JSON ONLY:
       return NextResponse.json(parsed);
     }
 
+    // 🔥 FIX 2: Fallacy Checker को स्मार्ट बनाया गया है ताकि डिबेट की टैक्टिक्स को पेनाल्टी न दे
     // ─────────────────────────────────────────────────────────────────
-    // 5. FALLACY & TONE CHECK (WITH TOPIC DRIFT DETECTION)
+    // 5. FALLACY & TONE CHECK (SMART UPGRADE)
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text, topic } = body;
-
-      const prompt = `You are a strict NLP logic analyzer.
-Analyze this Hindi statement against the MAIN TOPIC: "${topic || 'General Debate'}".
-
-CRITICAL TASK: TOPIC DRIFT (TANGENT)
-If the statement starts rambling about concepts highly unrelated to the main topic (e.g., tech infrastructure in a philosophy debate), you MUST flag it as a fallacy.
-- Fallacy Name: "Off-Topic Tangent"
-- Penalty: 15
-- Explanation: Explain in Hindi how it drifted from the main topic.
-
-If it is on-topic, check for standard fallacies (Strawman, Ad Hominem, Red Herring, etc.) and assign a 5-10 point penalty if found.
-Calculate 'Aggression Score' (0-100, 100=hostile) and 'Logic Score' (0-100, 100=perfectly logical).
-
+      const prompt = `You are an expert, unbiased Debate Moderator. Analyze this Hindi statement for logical fallacies.
+Topic: "${topic}"
 Statement: "${text}"
 
+CRITICAL DEBATE RULES:
+1. Counter-arguments are NOT fallacies: Questioning the opponent's claims, asking for data on their specific examples (like Startup India), or challenging their logic is a VALID DEBATE TACTIC. Do NOT flag it as "Off-Topic" or "Strawman".
+2. Only flag GENUINE fallacies: Ad Hominem (personal insults), Strawman (completely misrepresenting the opponent), or Falsified Timelines (e.g., blaming a government for statistics from before they were in power).
+3. If there is NO real logical fallacy, you MUST set "hasFallacy": false. Do not be overly harsh.
+
+Calculate 'Aggression Score' (0-100) and 'Logic Score' (0-100).
+
 Respond STRICTLY with JSON ONLY using this format:
-{"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation in Hindi", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
-
-      const { text: result } = await generateText({
-        model: groq('llama-3.1-8b-instant'),
+{"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation in Hindi", "penalty": 0 (only if fallacy is true, max 15), "aggressionScore": 50, "logicScore": 80}`;
+      
+      const { text: result } = await generateText({ 
+        model: groq('llama-3.1-8b-instant'), 
         temperature: 0.1,
-        prompt
+        prompt 
       });
-
-      const parsed = safeJsonParse(result, {
-        hasFallacy: false,
-        fallacyName: null,
+      
+      const parsed = safeJsonParse(result, { 
+        hasFallacy: false, 
+        fallacyName: null, 
         explanation: '',
         penalty: 0,
         aggressionScore: 50,
-        logicScore: 50
+        logicScore: 80 
       });
-
+      
       return NextResponse.json(parsed);
     }
 
