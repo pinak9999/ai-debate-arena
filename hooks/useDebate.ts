@@ -224,10 +224,65 @@ export function useDebate(): UseDebateReturn {
     setAgentLogs((prev) => [...prev, { id: generateId(), timestamp: Date.now(), text, type }]);
   }, []);
 
+  // ─── LIVE VOTING FIX: ग्लोबल Supabase Listener (जो कटेगा नहीं) ───
+  useEffect(() => {
+    console.log("Supabase Realtime Connection Start...");
+
+    const voteChannel = supabase
+      .channel('realtime-votes-channel')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'votes' },
+        async (payload) => {
+          console.log('🔥 VOTE EVENT RECEIVED:', payload);
+
+          const activeRound = currentRoundRef.current;
+          console.log('[Live Vote] Fetching fresh count for round:', activeRound);
+
+          const { data, error } = await supabase
+            .from('votes')
+            .select('side')
+            .eq('round_number', activeRound);
+
+          if (error) {
+            console.error(`[Live Vote] Error fetching votes: ${error.message}`);
+            return;
+          }
+
+          if (data) {
+            const total = data.length;
+            const proVotes = data.filter((v) => v.side === 'proponent').length;
+            const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
+            const oppPercentage = 100 - proPercentage;
+
+            const nextScore = { pro: proPercentage, opp: oppPercentage };
+            setAudienceScore(nextScore);
+            audienceScoreRef.current = nextScore;
+
+            addLog(`[Live Vote] Round ${activeRound}: ${proPercentage}% Pro / ${oppPercentage}% Opp (Total votes: ${total})`, 'system');
+            console.log(`[Live Vote] Round ${activeRound} updated: ${proPercentage}% Pro`);
+          }
+        }
+      )
+      .subscribe((status, err) => {
+        if (status === 'SUBSCRIBED') {
+          console.log('✅ Supabase Live Voting 100% Connected!');
+        }
+        if (status === 'CHANNEL_ERROR') {
+          console.error('❌ Supabase Channel Error:', err);
+        }
+      });
+
+    return () => {
+      console.log("Cleaning up Supabase Connection...");
+      supabase.removeChannel(voteChannel);
+    };
+  }, [addLog]);
+
   const resetDebate = useCallback(() => {
     abortControllerRef.current?.abort();
     stopSpeech();
-    supabase.removeAllChannels();
+    // 🔥 यहाँ से supabase.removeAllChannels() हटा दिया गया है ताकि लाइव वोटिंग बंद न हो!
     setStatus('idle');
     setMessages([]);
     setStreamingText('');
@@ -298,7 +353,6 @@ export function useDebate(): UseDebateReturn {
     }
   }, [addLog]);
 
-  // audienceScore param जोड़ा गया — ऑडियंस का लाइव वोट स्कोर बैकएंड को भेजा जाता है
   const fetchDebateTurn = useCallback(
     async (
       params: {
@@ -309,7 +363,7 @@ export function useDebate(): UseDebateReturn {
         previousMessages: DebateMessage[];
         subjectMode: DebateSubject;
         stockContext?: StockData | null;
-        audienceScore?: AudienceScore; // 🔥 ऑडियंस का लाइव स्कोर
+        audienceScore?: AudienceScore; 
       },
       signal: AbortSignal
     ): Promise<string> => {
@@ -322,14 +376,13 @@ export function useDebate(): UseDebateReturn {
           round: params.round,
           totalRounds: params.totalRounds,
           speaker: params.speaker,
-          // AI को हिस्ट्री भेजते समय hiddenContext (Webcam Data) भी भेजा जा रहा है
           history: params.previousMessages.map((m) => ({
             speaker: m.speaker,
             text: m.hiddenContext ? `${m.text}\n\n${m.hiddenContext}` : m.text,
           })),
           mode: params.subjectMode,
           stockContext: params.stockContext || undefined,
-          audienceScore: params.audienceScore, // 🔥 Backend को भेज रहे हैं
+          audienceScore: params.audienceScore,
         }),
         signal,
       });
@@ -435,7 +488,6 @@ export function useDebate(): UseDebateReturn {
     []
   );
 
-  // Added 'currentTopic' parameter to check for Topic Drift
   const runFallacyCheck = useCallback((messageId: string, text: string, currentTopic: string) => {
     addLog(`[NLP Engine] Scanning argument for fallacies & topic drift...`, 'fallacy');
     fetch(API_ENDPOINT, {
@@ -547,61 +599,6 @@ export function useDebate(): UseDebateReturn {
         addLog(`[System] Personality Clash Mode activated — Aggressive Analyst vs The Philosopher, grounded via live web research.`, 'system');
       }
 
-      supabase.removeAllChannels();
-      addLog(`[System] Establishing Realtime connection for Live Class Voting...`, 'system');
-
-      // 🔥 FIX 1: हर INSERT पर हम event के payload के round_number पर भरोसा नहीं करते
-      //   (timing race की वजह से mismatch हो सकता है), बल्कि हमेशा currentRoundRef.current
-      //   के हिसाब से DB से fresh count निकालते हैं — यही ज़्यादा भरोसेमंद है।
-      // 🔥 FIX 2: audienceScoreRef.current को भी यहीं तुरंत sync कर रहे हैं, वरना RL
-      //   backend को हमेशा stale/पुराना score जाता रहेगा भले ही UI पर सही % दिखे।
-      const voteChannel = supabase
-        .channel('realtime_votes')
-        .on(
-          'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'votes' },
-          async (payload) => {
-            console.log('🔥 VOTE EVENT RECEIVED:', payload); // 👈 DEBUG LOG
-
-            const activeRound = currentRoundRef.current;
-            console.log('[Live Vote] Fetching fresh count for round:', activeRound); // 👈 DEBUG LOG
-
-            const { data, error } = await supabase
-              .from('votes')
-              .select('side')
-              .eq('round_number', activeRound);
-
-            console.log('[Live Vote] SELECT result:', data, 'error:', error); // 👈 DEBUG LOG
-
-            if (error) {
-              addLog(`[Live Vote] Error fetching votes: ${error.message}`, 'system');
-              return;
-            }
-
-            if (data) {
-              const total = data.length;
-              const proVotes = data.filter((v) => v.side === 'proponent').length;
-              const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
-              const oppPercentage = 100 - proPercentage;
-
-              const nextScore = { pro: proPercentage, opp: oppPercentage };
-              setAudienceScore(nextScore);
-              audienceScoreRef.current = nextScore; // 🔥 FIX: ref भी तुरंत sync कर दिया
-
-              addLog(`[Live Vote] Round ${activeRound}: ${proPercentage}% Pro / ${oppPercentage}% Opp (Total votes: ${total})`, 'system');
-              console.log(`[Live Vote] Round ${activeRound} updated: ${proPercentage}% Pro`); // 👈 DEBUG LOG
-            }
-          }
-        )
-        .subscribe((status) => {
-          console.log('📡 Realtime channel status:', status); // 👈 DEBUG LOG
-          if (status === 'SUBSCRIBED') {
-            addLog(`[System] Live voting channel connected successfully.`, 'system');
-          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
-            addLog(`[System] Live voting channel failed to connect: ${status}`, 'system');
-          }
-        });
-
       const committedMessages: DebateMessage[] = [];
       const speakerOrder = ['proponent', 'opponent'] as const;
 
@@ -638,7 +635,6 @@ export function useDebate(): UseDebateReturn {
               setStreamingMessageId(null);
               const rawInput = await waitForPlayerInput();
 
-              // यहाँ हम [SYSTEM NOTE] को अलग कर रहे हैं ताकि वह UI में न दिखे
               const extracted = extractHiddenContext(rawInput);
               fullText = extracted.cleanText;
               hiddenCtx = extracted.hiddenContext;
@@ -646,7 +642,7 @@ export function useDebate(): UseDebateReturn {
               if (signal.aborted) break;
             } else {
               addLog(`[LLM Router] Routing context to AI Agent #${speaker === 'proponent' ? '001' : '002'}...`, 'info');
-              console.log('[Live Vote] Sending audienceScore to AI:', audienceScoreRef.current, 'for round', round); // 👈 DEBUG LOG
+              console.log('[Live Vote] Sending audienceScore to AI:', audienceScoreRef.current, 'for round', round);
               fullText = await fetchDebateTurn(
                 {
                   topic: config.topic,
@@ -656,7 +652,7 @@ export function useDebate(): UseDebateReturn {
                   previousMessages: committedMessages.slice(0, -1),
                   subjectMode,
                   stockContext: fetchedStockData,
-                  audienceScore: audienceScoreRef.current, // 🔥 यहाँ से लाइव स्कोर जा रहा है (हमेशा latest)
+                  audienceScore: audienceScoreRef.current, 
                 },
                 signal
               );
@@ -743,7 +739,7 @@ export function useDebate(): UseDebateReturn {
           setStatus('finished');
         }
 
-        supabase.removeChannel(voteChannel);
+        // 🔥 यहाँ से भी supabase.removeChannel(voteChannel) हटा दिया गया है
       } catch (err) {
         if (signal.aborted) return;
         const msg = err instanceof Error ? err.message : 'An unexpected error occurred';
