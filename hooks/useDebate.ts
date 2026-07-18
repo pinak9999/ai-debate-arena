@@ -550,26 +550,28 @@ export function useDebate(): UseDebateReturn {
       supabase.removeAllChannels();
       addLog(`[System] Establishing Realtime connection for Live Class Voting...`, 'system');
 
-     const voteChannel = supabase
-        .channel('schema-db-changes')
+   const voteChannel = supabase
+        .channel('realtime_votes')
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'votes' },
           async (payload) => {
-            // 🔥 फिक्स: हर बार डेटाबेस से पूरा स्कोर दोबारा फेच करें, सिर्फ Payload पर भरोसा न करें
+            // 🔥 फिक्स: अब हम हर हाल में राउंड नंबर को ताज़ा पिक करेंगे
+            const activeRound = currentRoundRef.current;
+            
             const { data } = await supabase
-                .from('votes')
-                .select('side')
-                .eq('round_number', currentRoundRef.current);
+              .from('votes')
+              .select('side')
+              .eq('round_number', activeRound);
 
             if (data) {
-                const total = data.length;
-                const proVotes = data.filter((v) => v.side === 'proponent').length;
-                const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
-                const oppPercentage = 100 - proPercentage;
+              const total = data.length;
+              const proVotes = data.filter((v) => v.side === 'proponent').length;
+              const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
+              const oppPercentage = 100 - proPercentage;
 
-                setAudienceScore({ pro: proPercentage, opp: oppPercentage });
-                addLog(`[Live Vote] Update: ${proPercentage}% Pro / ${oppPercentage}% Opp`, 'system');
+              setAudienceScore({ pro: proPercentage, opp: oppPercentage });
+              console.log(`[Live Vote] Round ${activeRound} updated: ${proPercentage}% Pro`);
             }
           }
         )
