@@ -35,10 +35,13 @@ export function useSpeech() {
     processingRef.current = true;
     setIsSpeaking(true);
 
-    // 🟢 Robust Native TTS Fallback Function (लंबे टेक्स्ट को टुकड़ों में तोड़ने के साथ)
+    // 🟢 Robust Native TTS Fallback Function (100% Fixed)
     const playNativeTTS = () => {
-      // टेक्स्ट को पूर्णविराम या प्रश्नचिह्न से तोड़ें
-      const chunks = (item.text.match(/[^।!?.\n]+[।!?.\n]*/g) || [item.text])
+      // 1. Markdown और स्पेशल कैरेक्टर्स को हटाएं ताकि ब्राउज़र की आवाज़ अटके नहीं
+      const cleanText = item.text.replace(/[*#_`~[\]]/g, '').trim();
+
+      // 2. टेक्स्ट को पूर्णविराम या प्रश्नचिह्न से छोटे हिस्सों में तोड़ें
+      const chunks = (cleanText.match(/[^।!?.\n]+[।!?.\n]*/g) || [cleanText])
                       .map(c => c.trim())
                       .filter(c => c.length > 0);
       
@@ -57,21 +60,43 @@ export function useSpeech() {
         currentUtteranceRef.current = utterance; // Garbage Collection से बचाने के लिए
         utterance.lang = 'hi-IN';
         
-        // आवाज़ का लहज़ा
+        // आवाज़ का लहज़ा (Pitch)
         utterance.pitch = item.speaker === 'opponent' ? 0.8 : item.speaker === 'judge' ? 0.9 : 1.1;
 
-        utterance.onend = () => {
-          currentChunk++;
-          speakNext();
-        };
-        
-        utterance.onerror = (e) => {
-          console.warn("Native TTS Error:", e);
-          currentChunk++;
-          speakNext();
+        // 🔥 Browser Voice Load Fix: ज़बरदस्ती हिंदी आवाज़ सेट करें
+        const setVoiceAndSpeak = () => {
+          const voices = window.speechSynthesis.getVoices();
+          const hindiVoice = voices.find(v => v.lang === 'hi-IN' || v.lang.includes('hi'));
+          
+          if (hindiVoice) {
+            utterance.voice = hindiVoice;
+          }
+          
+          utterance.onend = () => {
+            currentChunk++;
+            speakNext();
+          };
+          
+          utterance.onerror = (e) => {
+            console.warn(`Native TTS Error on chunk ${currentChunk}:`, e);
+            currentChunk++;
+            speakNext();
+          };
+
+          // क्रोम बग फिक्स: कभी-कभी TTS पॉज़ रह जाता है, उसे रिज़्यूम करें
+          window.speechSynthesis.resume();
+          window.speechSynthesis.speak(utterance);
         };
 
-        window.speechSynthesis.speak(utterance);
+        // अगर ब्राउज़र में आवाज़ें लोड नहीं हुई हैं (खासकर प्रोपोनेंट की पहली बारी में), तो इंतज़ार करें
+        if (window.speechSynthesis.getVoices().length === 0) {
+          window.speechSynthesis.onvoiceschanged = () => {
+            setVoiceAndSpeak();
+            window.speechSynthesis.onvoiceschanged = null; // एक बार चलने के बाद हटा दें
+          };
+        } else {
+          setVoiceAndSpeak();
+        }
       };
 
       speakNext();
