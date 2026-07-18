@@ -16,7 +16,12 @@ export function useSpeech() {
   
   const queueRef = useRef<QueueItem[]>([]);
   const processingRef = useRef(false);
+  
+  // ElevenLabs के ऑडियो के लिए
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  
+  // Native TTS (Fallback) के लिए
+  const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const processQueue = useCallback(async () => {
     if (processingRef.current) return;
@@ -30,34 +35,70 @@ export function useSpeech() {
     processingRef.current = true;
     setIsSpeaking(true);
 
+    // 🟢 Robust Native TTS Fallback Function (लंबे टेक्स्ट को टुकड़ों में तोड़ने के साथ)
+    const playNativeTTS = () => {
+      // टेक्स्ट को पूर्णविराम या प्रश्नचिह्न से तोड़ें
+      const chunks = (item.text.match(/[^।!?.\n]+[।!?.\n]*/g) || [item.text])
+                      .map(c => c.trim())
+                      .filter(c => c.length > 0);
+      
+      let currentChunk = 0;
+      window.speechSynthesis.cancel();
+
+      const speakNext = () => {
+        if (currentChunk >= chunks.length || isMuted) {
+          processingRef.current = false;
+          item.resolve();
+          processQueue(); // अगला टर्न चलाएं
+          return;
+        }
+
+        const utterance = new SpeechSynthesisUtterance(chunks[currentChunk]);
+        currentUtteranceRef.current = utterance; // Garbage Collection से बचाने के लिए
+        utterance.lang = 'hi-IN';
+        
+        // आवाज़ का लहज़ा
+        utterance.pitch = item.speaker === 'opponent' ? 0.8 : item.speaker === 'judge' ? 0.9 : 1.1;
+
+        utterance.onend = () => {
+          currentChunk++;
+          speakNext();
+        };
+        
+        utterance.onerror = (e) => {
+          console.warn("Native TTS Error:", e);
+          currentChunk++;
+          speakNext();
+        };
+
+        window.speechSynthesis.speak(utterance);
+      };
+
+      speakNext();
+    };
+
     try {
-      // 1. Backend से ElevenLabs का Audio Fetch करें
+      // 1. Backend से ElevenLabs API Call
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: item.text, speaker: item.speaker }),
       });
 
-      if (!res.ok) throw new Error('Failed to fetch audio from TTS API');
+      // 🚨 अगर ElevenLabs का कोटा खत्म है (Payment Required) या सर्वर एरर है
+      if (!res.ok) {
+        console.warn('ElevenLabs API failed, switching to Native TTS...');
+        playNativeTTS(); // Fallback ट्रिगर करें
+        return;
+      }
 
-      // 2. Audio को Blob में कन्वर्ट करके URL बनाएँ
+      // अगर API सक्सेस है तो ElevenLabs का ऑडियो प्ले करें
       const blob = await res.blob();
       const audioUrl = URL.createObjectURL(blob);
-      
       const audio = new Audio(audioUrl);
       currentAudioRef.current = audio;
 
-      // 3. Audio खत्म होने पर अगला टर्न चलाएँ
       audio.onended = () => {
-        URL.revokeObjectURL(audioUrl); // Memory clean up
-        currentAudioRef.current = null;
-        processingRef.current = false;
-        item.resolve();
-        processQueue(); // Queue का अगला आइटम चेक करें
-      };
-
-      audio.onerror = (e) => {
-        console.error('Audio Playback Error:', e);
         URL.revokeObjectURL(audioUrl);
         currentAudioRef.current = null;
         processingRef.current = false;
@@ -65,19 +106,22 @@ export function useSpeech() {
         processQueue();
       };
 
-      // 4. अगर म्यूट नहीं है तो प्ले करें
+      audio.onerror = () => {
+        console.warn('Audio play error, switching to Native TTS...');
+        URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        playNativeTTS(); // प्लेबैक में दिक्कत आए तो भी Fallback चलाएं
+      };
+
       if (!isMuted) {
         await audio.play();
       } else {
-        // अगर म्यूट है, तो बिना प्ले किए तुरंत रिज़ॉल्व कर दें
         audio.onended(new Event('ended'));
       }
 
     } catch (error) {
-      console.error('TTS Processing Error:', error);
-      processingRef.current = false;
-      item.resolve();
-      processQueue();
+      console.error('TTS Fetch Error:', error);
+      playNativeTTS(); // नेटवर्क फेल होने पर भी Fallback चलेगा
     }
   }, [isMuted]);
 
@@ -98,6 +142,7 @@ export function useSpeech() {
       currentAudioRef.current.currentTime = 0;
       currentAudioRef.current = null;
     }
+    window.speechSynthesis.cancel();
     queueRef.current = [];
     processingRef.current = false;
     setIsSpeaking(false);
@@ -106,10 +151,12 @@ export function useSpeech() {
   const toggleMute = useCallback(() => {
     setIsMuted((prev) => {
       const newMutedState = !prev;
-      if (newMutedState && currentAudioRef.current) {
-        // म्यूट करते ही करंट ऑडियो रोक दें
-        currentAudioRef.current.pause();
-        currentAudioRef.current.currentTime = 0;
+      if (newMutedState) {
+        if (currentAudioRef.current) {
+          currentAudioRef.current.pause();
+          currentAudioRef.current.currentTime = 0;
+        }
+        window.speechSynthesis.cancel();
         queueRef.current = [];
         processingRef.current = false;
         setIsSpeaking(false);
@@ -121,9 +168,8 @@ export function useSpeech() {
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (currentAudioRef.current) {
-        currentAudioRef.current.pause();
-      }
+      if (currentAudioRef.current) currentAudioRef.current.pause();
+      window.speechSynthesis.cancel();
     };
   }, []);
 
