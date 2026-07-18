@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
 import { createGroq } from '@ai-sdk/groq';
-
+// 🔥 VERCEL TIMEOUT FIX: इसे Edge Runtime पर सेट करें ताकि 10 सेकंड में कनेक्शन न कटे
+export const runtime = 'edge'; 
+export const maxDuration = 60; // (ये Pro plan के लिए है, पर लिखे रहने दो)
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
 });
 
-export const maxDuration = 60;
+
 
 // ─── UTILITY FUNCTIONS ───
 
