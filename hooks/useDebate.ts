@@ -198,7 +198,7 @@ export function useDebate(): UseDebateReturn {
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [audienceScore, setAudienceScore] = useState<AudienceScore>({ pro: 50, opp: 50 });
 
-  // 🔥 NEW: हमेशा latest audienceScore की ref रखते हैं ताकि useCallback के stale closure
+  // हमेशा latest audienceScore की ref रखते हैं ताकि useCallback के stale closure
   // की वजह से API कॉल में पुराना (stale) live-vote डेटा न चला जाए।
   const audienceScoreRef = useRef<AudienceScore>({ pro: 50, opp: 50 });
   useEffect(() => {
@@ -298,7 +298,7 @@ export function useDebate(): UseDebateReturn {
     }
   }, [addLog]);
 
-  // 🔥 UPDATED: audienceScore param जोड़ा गया — ऑडियंस का लाइव वोट स्कोर बैकएंड को भेजा जाता है
+  // audienceScore param जोड़ा गया — ऑडियंस का लाइव वोट स्कोर बैकएंड को भेजा जाता है
   const fetchDebateTurn = useCallback(
     async (
       params: {
@@ -309,7 +309,7 @@ export function useDebate(): UseDebateReturn {
         previousMessages: DebateMessage[];
         subjectMode: DebateSubject;
         stockContext?: StockData | null;
-        audienceScore?: AudienceScore; // 🔥 NEW: ऑडियंस का लाइव स्कोर
+        audienceScore?: AudienceScore; // 🔥 ऑडियंस का लाइव स्कोर
       },
       signal: AbortSignal
     ): Promise<string> => {
@@ -329,7 +329,7 @@ export function useDebate(): UseDebateReturn {
           })),
           mode: params.subjectMode,
           stockContext: params.stockContext || undefined,
-          audienceScore: params.audienceScore, // 🔥 NEW: Backend को भेज रहे हैं
+          audienceScore: params.audienceScore, // 🔥 Backend को भेज रहे हैं
         }),
         signal,
       });
@@ -550,19 +550,33 @@ export function useDebate(): UseDebateReturn {
       supabase.removeAllChannels();
       addLog(`[System] Establishing Realtime connection for Live Class Voting...`, 'system');
 
-   const voteChannel = supabase
+      // 🔥 FIX 1: हर INSERT पर हम event के payload के round_number पर भरोसा नहीं करते
+      //   (timing race की वजह से mismatch हो सकता है), बल्कि हमेशा currentRoundRef.current
+      //   के हिसाब से DB से fresh count निकालते हैं — यही ज़्यादा भरोसेमंद है।
+      // 🔥 FIX 2: audienceScoreRef.current को भी यहीं तुरंत sync कर रहे हैं, वरना RL
+      //   backend को हमेशा stale/पुराना score जाता रहेगा भले ही UI पर सही % दिखे।
+      const voteChannel = supabase
         .channel('realtime_votes')
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'votes' },
           async (payload) => {
-            // 🔥 फिक्स: अब हम हर हाल में राउंड नंबर को ताज़ा पिक करेंगे
+            console.log('🔥 VOTE EVENT RECEIVED:', payload); // 👈 DEBUG LOG
+
             const activeRound = currentRoundRef.current;
-            
-            const { data } = await supabase
+            console.log('[Live Vote] Fetching fresh count for round:', activeRound); // 👈 DEBUG LOG
+
+            const { data, error } = await supabase
               .from('votes')
               .select('side')
               .eq('round_number', activeRound);
+
+            console.log('[Live Vote] SELECT result:', data, 'error:', error); // 👈 DEBUG LOG
+
+            if (error) {
+              addLog(`[Live Vote] Error fetching votes: ${error.message}`, 'system');
+              return;
+            }
 
             if (data) {
               const total = data.length;
@@ -570,12 +584,23 @@ export function useDebate(): UseDebateReturn {
               const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
               const oppPercentage = 100 - proPercentage;
 
-              setAudienceScore({ pro: proPercentage, opp: oppPercentage });
-              console.log(`[Live Vote] Round ${activeRound} updated: ${proPercentage}% Pro`);
+              const nextScore = { pro: proPercentage, opp: oppPercentage };
+              setAudienceScore(nextScore);
+              audienceScoreRef.current = nextScore; // 🔥 FIX: ref भी तुरंत sync कर दिया
+
+              addLog(`[Live Vote] Round ${activeRound}: ${proPercentage}% Pro / ${oppPercentage}% Opp (Total votes: ${total})`, 'system');
+              console.log(`[Live Vote] Round ${activeRound} updated: ${proPercentage}% Pro`); // 👈 DEBUG LOG
             }
           }
         )
-        .subscribe();
+        .subscribe((status) => {
+          console.log('📡 Realtime channel status:', status); // 👈 DEBUG LOG
+          if (status === 'SUBSCRIBED') {
+            addLog(`[System] Live voting channel connected successfully.`, 'system');
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            addLog(`[System] Live voting channel failed to connect: ${status}`, 'system');
+          }
+        });
 
       const committedMessages: DebateMessage[] = [];
       const speakerOrder = ['proponent', 'opponent'] as const;
@@ -621,6 +646,7 @@ export function useDebate(): UseDebateReturn {
               if (signal.aborted) break;
             } else {
               addLog(`[LLM Router] Routing context to AI Agent #${speaker === 'proponent' ? '001' : '002'}...`, 'info');
+              console.log('[Live Vote] Sending audienceScore to AI:', audienceScoreRef.current, 'for round', round); // 👈 DEBUG LOG
               fullText = await fetchDebateTurn(
                 {
                   topic: config.topic,
@@ -630,7 +656,7 @@ export function useDebate(): UseDebateReturn {
                   previousMessages: committedMessages.slice(0, -1),
                   subjectMode,
                   stockContext: fetchedStockData,
-                  audienceScore: audienceScoreRef.current, // 🔥 NEW: यहाँ से लाइव स्कोर जा रहा है (हमेशा latest)
+                  audienceScore: audienceScoreRef.current, // 🔥 यहाँ से लाइव स्कोर जा रहा है (हमेशा latest)
                 },
                 signal
               );
