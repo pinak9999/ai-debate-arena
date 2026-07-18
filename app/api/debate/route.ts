@@ -2,8 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
 import { createGroq } from '@ai-sdk/groq';
 
-// 🔥 VERCEL TIMEOUT FIX: इसे Edge Runtime पर सेट करें ताकि 10 सेकंड में कनेक्शन न कटे
-export const runtime = 'edge'; 
+// VERCEL TIMEOUT FIX: इसे Edge Runtime पर सेट करें ताकि 10 सेकंड में कनेक्शन न कटे
+export const runtime = 'edge';
 export const maxDuration = 60; // (ये Pro plan के लिए है, पर लिखे रहने दो)
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
@@ -212,10 +212,10 @@ RULES:
 - Format: {"hasChart": true, "title": "छोटा शीर्षक", "type": "bar_chart", "data": [{"name": "नाम 1", "value": 40}, {"name": "नाम 2", "value": 60}]}
 - If no valid comparison, respond ONLY: {"hasChart": false}`;
 
-    const { text: raw } = await generateText({ 
-      model: groq('llama-3.1-8b-instant'), 
+    const { text: raw } = await generateText({
+      model: groq('llama-3.1-8b-instant'),
       temperature: 0.1,
-      prompt 
+      prompt
     });
     const parsed = safeJsonParse<any>(raw, { hasChart: false });
 
@@ -236,6 +236,44 @@ RULES:
   } catch {
     return null;
   }
+}
+
+// ─── AUDIENCE SCORE TYPE + VALIDATOR ───
+
+interface AudienceScore {
+  pro: number;
+  opp: number;
+}
+
+// 🔥 NEW: सुनिश्चित करता है कि audienceScore malformed/undefined आने पर भी कोड क्रैश न हो
+function isValidAudienceScore(value: any): value is AudienceScore {
+  return (
+    value &&
+    typeof value.pro === 'number' &&
+    typeof value.opp === 'number' &&
+    Number.isFinite(value.pro) &&
+    Number.isFinite(value.opp)
+  );
+}
+
+// 🔥 NEW: AUDIENCE-RESPONSIVE AI STRATEGY (RL PROMPTING)
+// पहले राउंड में स्कोर हमेशा 50-50 होता है (डिफ़ॉल्ट), इसलिए राउंड 2 से ही स्ट्रैटेजी बदलती है।
+function buildRLInstruction(
+  audienceScore: unknown,
+  round: number,
+  speaker: 'proponent' | 'opponent'
+): string {
+  if (!isValidAudienceScore(audienceScore) || round <= 1) return '';
+
+  const myScore = speaker === 'proponent' ? audienceScore.pro : audienceScore.opp;
+
+  if (myScore <= 35) {
+    return `[CRITICAL STRATEGY SHIFT — LIVE AUDIENCE FEEDBACK]: You are LOSING the live audience vote heavily (Current score: ${myScore}%). You must CHANGE YOUR STRATEGY immediately. Stop using heavy technical jargon. Make an emotional, highly relatable, and desperate appeal to win the audience back. Be defensive but persuasive. Speak simply, from the heart.`;
+  }
+  if (myScore >= 65) {
+    return `[CRITICAL STRATEGY SHIFT — LIVE AUDIENCE FEEDBACK]: You are WINNING the live audience vote decisively (Current score: ${myScore}%). DOUBLE DOWN on your current strategy. Be assertive, highly confident, and deliver a crushing blow to completely destroy your opponent's remaining credibility.`;
+  }
+  return `[CRITICAL STRATEGY SHIFT — LIVE AUDIENCE FEEDBACK]: The live audience vote is closely contested (Current score: ${myScore}%). This is a neck-and-neck battle. Maintain your composure, deliver a perfectly balanced and undeniable factual argument to break the tie in your favor.`;
 }
 
 // ─── API HANDLER ───
@@ -310,7 +348,8 @@ export async function POST(req: NextRequest) {
     // 1. DEBATE TURN
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'debate_turn') {
-      const { topic, round, totalRounds, speaker, history = [], mode = 'topic', stockContext } = body;
+      // 🔥 audienceScore जोड़ा
+      const { topic, round, totalRounds, speaker, history = [], mode = 'topic', stockContext, audienceScore } = body;
       if (!topic || !speaker || !round) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
 
       const isStockMode = mode === 'stock';
@@ -347,7 +386,7 @@ Use these EXACT numbers naturally in your argument.`
           : `Rely on strong logical deduction.`;
       }
 
-      // 🔥 FIX 1: STRICT ANTI-REPETITION RULE
+      // STRICT ANTI-REPETITION RULE
       const antiRepetitionRule = `
 CRITICAL DEBATE RULES:
 1. NEVER start your response with "माननीय जज", "अध्यक्ष महोदय", or polite greetings. Jump directly into your argument naturally.
@@ -388,11 +427,13 @@ CRITICAL DEBATE RULES:
         }
       }
 
+      // 🔥 NEW: AUDIENCE-RESPONSIVE AI STRATEGY (RL PROMPTING)
+      const rlInstruction = buildRLInstruction(audienceScore, round, speaker);
+
       // ─── OPPONENT: SWARM AGENT ───
       if (speaker === 'opponent') {
         const opponentHistory = history.map((msg: { speaker: string; text: string }) => `[${msg.speaker}]: ${msg.text}`).join('\n');
 
-        // 🔥 FIX 2: INCREASED TEMPERATURE TO 0.6 FOR MORE CREATIVITY
         const [dataAgentCall, logicAgentCall] = await Promise.all([
           isStockMode
             ? generateText({
@@ -430,13 +471,13 @@ CRITICAL DEBATE RULES:
               }),
         ]);
 
-        // 🔥 FIX 3: ADDED STRICT "NEVER CONCLUDE IT WILL RECOVER" RULE FOR THE BEAR
         const leaderSystemPrompt = isStockMode
           ? `
 You are a CAUTIOUS RISK MANAGER (BEAR) for "${topic}".
 ${groundingBlock}
 Sub-agent inputs: Fundamental Risk: "${dataAgentCall.text}" | Valuation Risk: "${logicAgentCall.text}"
 ${antiRepetitionRule}
+${rlInstruction}
 ${roundInstruction}
 CRITICAL: You are the BEAR. NEVER conclude that the stock will recover. Always conclude it is a risk.
 Language: STRICTLY HINDI (DEVANAGARI). Sound professional, not a cheerleader.
@@ -447,6 +488,7 @@ You are "THE PHILOSOPHER" debating "${topic}".
 ${groundingBlock}
 Sub-agent inputs: Ethical Concern: "${dataAgentCall.text}" | Philosophical Precedent: "${logicAgentCall.text}"
 ${antiRepetitionRule}
+${rlInstruction}
 ${roundInstruction}
 Language: STRICTLY HINDI (DEVANAGARI). Maintain a composed tone. Do not use meta-phrases.
           `.trim()
@@ -455,13 +497,14 @@ You are a FIERCE DEBATER. Topic: "${topic}" (Stance: ${position}).
 ${groundingBlock}
 Sub-agent inputs: Counter: "${dataAgentCall.text}" | Flaw: "${logicAgentCall.text}"
 ${antiRepetitionRule}
+${rlInstruction}
 ${roundInstruction}
 Language: STRICTLY HINDI (DEVANAGARI). Highly intellectual and sharp tone.
           `.trim();
 
         const { text: swarmRaw } = await generateText({
           model: groq('llama-3.1-8b-instant'),
-          temperature: 0.7, // 🔥 Leader Temperature increased
+          temperature: 0.7,
           system: leaderSystemPrompt,
           messages: [...messages, { role: 'user', content: `Respond directly in Hindi. Remember: Do NOT use "माननीय जज". Do NOT agree with the opponent.` }] as any,
         });
@@ -478,6 +521,7 @@ Language: STRICTLY HINDI (DEVANAGARI). Highly intellectual and sharp tone.
 You are a SHARP BULLISH ANALYST for "${topic}".
 ${groundingBlock}
 ${antiRepetitionRule}
+${rlInstruction}
 ${roundInstruction}
 Language: STRICTLY HINDI (DEVANAGARI). Confident, trading desk analyst tone.
         `.trim()
@@ -486,6 +530,7 @@ Language: STRICTLY HINDI (DEVANAGARI). Confident, trading desk analyst tone.
 You are "THE AGGRESSIVE ANALYST". Topic: "${topic}".
 ${groundingBlock}
 ${antiRepetitionRule}
+${rlInstruction}
 ${roundInstruction}
 Language: STRICTLY HINDI (DEVANAGARI). Confident, punchy, assertive.
         `.trim()
@@ -494,16 +539,16 @@ You are a FIERCE DEBATER. Role: ${speaker.toUpperCase()}
 Stance: ${position} on "${topic}".
 ${groundingBlock}
 ${antiRepetitionRule}
+${rlInstruction}
 ${roundInstruction}
 Language: STRICTLY HINDI (DEVANAGARI). Professional, persuasive.
         `.trim();
 
       const draftMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly in Hindi without formal greetings.` }];
 
-      // 🔥 FIX 4: TEMPERATURE INCREASED TO 0.7 TO STOP REPETITION
       const { text: initialDraft } = await generateText({
         model: groq('llama-3.1-8b-instant'),
-        temperature: 0.7, 
+        temperature: 0.7,
         system: systemPrompt,
         messages: draftMessages as any,
       });
@@ -514,10 +559,10 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
         : `Check this draft. Does it strictly defend its stance? Did it avoid agreeing with the opponent? Did it avoid robotic greetings like "माननीय जज" and academic fallacy names? Draft: "${initialDraft}"
 Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason in hindi"}.`;
 
-      const { text: criticOutput } = await generateText({ 
-        model: groq('llama-3.1-8b-instant'), 
-        temperature: 0.1, 
-        prompt: criticPrompt 
+      const { text: criticOutput } = await generateText({
+        model: groq('llama-3.1-8b-instant'),
+        temperature: 0.1,
+        prompt: criticPrompt
       });
       const evaluation = safeJsonParse(criticOutput, { approved: true, feedback: 'Perfect' });
 
@@ -528,10 +573,10 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
           { role: 'assistant', content: initialDraft },
           { role: 'user', content: `CRITIC FEEDBACK: "${evaluation.feedback}". Fix the flaws, drop any robotic greetings, and provide a sharp response in Hindi.` },
         ];
-        
+
         const { text: rewrittenDraft } = await generateText({
           model: groq('llama-3.1-8b-instant'),
-          temperature: 0.7, // 🔥 Rewriter temperature increased too
+          temperature: 0.7,
           system: systemPrompt,
           messages: finalMessages as any,
         });
@@ -553,10 +598,10 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
         ? ' Judge purely on logical strength and evidence — do not favor either the aggressive/data-driven style or the philosophical style.'
         : '';
       const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback in HINDI (DEVANAGARI) under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
-      const { text } = await generateText({ 
-        model: groq('llama-3.1-8b-instant'), 
+      const { text } = await generateText({
+        model: groq('llama-3.1-8b-instant'),
         temperature: 0.4,
-        prompt: critiquePrompt 
+        prompt: critiquePrompt
       });
       return NextResponse.json({ critique: stripFakeCitations(text) });
     }
@@ -569,8 +614,7 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
       const biasNote = mode === 'personality'
         ? '\nIMPORTANT: You must remain STRICTLY NEUTRAL between the Aggressive Data-Driven debater and the Philosophical debater. Score based ONLY on logical strength, evidence, and direct engagement with the opponent — never based on which communication style you personally find more persuasive.'
         : '';
-      
-      // 🔥 FIX 5: ADDED STRICT PENALTY RULE FOR JUDGE
+
       const judgePrompt = `Evaluate the debate on Topic: "${topic}"${biasNote}
 Transcript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}
 
@@ -579,11 +623,11 @@ If any speaker has a "[SYSTEM NOTE: PENALTY APPLIED...]" tag in their transcript
 
 Respond STRICTLY with JSON ONLY:
 {"winner":"proponent/opponent/tie","score_proponent":85,"score_opponent":80,"reasoning":"hindi summary of why they won, explicitly mentioning any penalties if applied."}`;
-      
-      const { text } = await generateText({ 
-        model: groq('llama-3.1-8b-instant'), 
+
+      const { text } = await generateText({
+        model: groq('llama-3.1-8b-instant'),
         temperature: 0.3,
-        prompt: judgePrompt 
+        prompt: judgePrompt
       });
       const object = safeJsonParse(text, { winner: 'tie', score_proponent: 50, score_opponent: 50, reasoning: 'मुकाबला बराबरी का रहा।' });
       return NextResponse.json({
@@ -603,10 +647,10 @@ Respond STRICTLY with JSON ONLY:
     if (body.type === 'round_score') {
       const { topic, history = [], round } = body;
       const prompt = `Topic: "${topic}". Rate round ${round}.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n')}\nRespond STRICTLY with JSON ONLY: {"pro": 75, "opp": 80}`;
-      const { text } = await generateText({ 
-        model: groq('llama-3.1-8b-instant'), 
+      const { text } = await generateText({
+        model: groq('llama-3.1-8b-instant'),
         temperature: 0.1,
-        prompt 
+        prompt
       });
       const parsed = safeJsonParse(text, { pro: 50, opp: 50 });
       return NextResponse.json(parsed);
@@ -616,8 +660,8 @@ Respond STRICTLY with JSON ONLY:
     // 5. FALLACY & TONE CHECK (WITH TOPIC DRIFT DETECTION)
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
-      const { text, topic } = body; // 🔥 Extracted topic
-      
+      const { text, topic } = body;
+
       const prompt = `You are a strict NLP logic analyzer.
 Analyze this Hindi statement against the MAIN TOPIC: "${topic || 'General Debate'}".
 
@@ -635,21 +679,21 @@ Statement: "${text}"
 Respond STRICTLY with JSON ONLY using this format:
 {"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation in Hindi", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
 
-      const { text: result } = await generateText({ 
-        model: groq('llama-3.1-8b-instant'), 
-        temperature: 0.1, // Strict logic checking
-        prompt 
+      const { text: result } = await generateText({
+        model: groq('llama-3.1-8b-instant'),
+        temperature: 0.1,
+        prompt
       });
-      
-      const parsed = safeJsonParse(result, { 
-        hasFallacy: false, 
-        fallacyName: null, 
+
+      const parsed = safeJsonParse(result, {
+        hasFallacy: false,
+        fallacyName: null,
         explanation: '',
         penalty: 0,
         aggressionScore: 50,
-        logicScore: 50 
+        logicScore: 50
       });
-      
+
       return NextResponse.json(parsed);
     }
 

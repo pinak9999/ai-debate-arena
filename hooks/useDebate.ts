@@ -16,7 +16,7 @@ export interface DebateMessage {
   id: string;
   speaker: 'proponent' | 'opponent' | 'judge';
   text: string;
-  hiddenContext?: string; // 🔥 NEW: वेबकैम का सीक्रेट डेटा (Confidence Score) जो UI में नहीं दिखेगा पर AI को जाएगा
+  hiddenContext?: string; // 🔥 वेबकैम का सीक्रेट डेटा (Confidence Score) जो UI में नहीं दिखेगा पर AI को जाएगा
   round: number;
   isComplete: boolean;
   isStreaming: boolean;
@@ -45,7 +45,7 @@ export interface JudgeScores {
 export type DebateStatus = 'idle' | 'debating' | 'judging' | 'finished' | 'error';
 export type DebateMode = 'spectator' | 'player';
 
-// 🚀 अब तीन मोड: Topic / Stock / Personality
+// तीन मोड: Topic / Stock / Personality
 export type DebateSubject = 'topic' | 'stock' | 'personality';
 
 export interface ScorePoint {
@@ -54,7 +54,7 @@ export interface ScorePoint {
   opp: number;
 }
 
-// 🔥 अपग्रेडेड FallacyResult (Tone और Penalty के साथ)
+// अपग्रेडेड FallacyResult (Tone और Penalty के साथ)
 export interface FallacyResult {
   hasFallacy: boolean;
   fallacyName: string | null;
@@ -142,7 +142,7 @@ function generateId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
-// 🔥 NEW: PlayerInput से आने वाले [SYSTEM NOTE] को अलग करने का फंक्शन
+// PlayerInput से आने वाले [SYSTEM NOTE] को अलग करने का फंक्शन
 function extractHiddenContext(rawText: string): { cleanText: string; hiddenContext?: string } {
   const match = rawText.match(/\[SYSTEM NOTE:[\s\S]*?\]/);
   if (match) {
@@ -198,6 +198,13 @@ export function useDebate(): UseDebateReturn {
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [audienceScore, setAudienceScore] = useState<AudienceScore>({ pro: 50, opp: 50 });
 
+  // 🔥 NEW: हमेशा latest audienceScore की ref रखते हैं ताकि useCallback के stale closure
+  // की वजह से API कॉल में पुराना (stale) live-vote डेटा न चला जाए।
+  const audienceScoreRef = useRef<AudienceScore>({ pro: 50, opp: 50 });
+  useEffect(() => {
+    audienceScoreRef.current = audienceScore;
+  }, [audienceScore]);
+
   const [subject, setSubject] = useState<DebateSubject>('topic');
   const [stockData, setStockData] = useState<StockData | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
@@ -238,6 +245,7 @@ export function useDebate(): UseDebateReturn {
     setFactCheckLoading({});
     setAgentLogs([]);
     setAudienceScore({ pro: 50, opp: 50 });
+    audienceScoreRef.current = { pro: 50, opp: 50 };
     setSubject('topic');
     setStockData(null);
     setStockLoading(false);
@@ -290,6 +298,7 @@ export function useDebate(): UseDebateReturn {
     }
   }, [addLog]);
 
+  // 🔥 UPDATED: audienceScore param जोड़ा गया — ऑडियंस का लाइव वोट स्कोर बैकएंड को भेजा जाता है
   const fetchDebateTurn = useCallback(
     async (
       params: {
@@ -300,6 +309,7 @@ export function useDebate(): UseDebateReturn {
         previousMessages: DebateMessage[];
         subjectMode: DebateSubject;
         stockContext?: StockData | null;
+        audienceScore?: AudienceScore; // 🔥 NEW: ऑडियंस का लाइव स्कोर
       },
       signal: AbortSignal
     ): Promise<string> => {
@@ -312,13 +322,14 @@ export function useDebate(): UseDebateReturn {
           round: params.round,
           totalRounds: params.totalRounds,
           speaker: params.speaker,
-          // 🔥 AI को हिस्ट्री भेजते समय hiddenContext (Webcam Data) भी भेजा जा रहा है
+          // AI को हिस्ट्री भेजते समय hiddenContext (Webcam Data) भी भेजा जा रहा है
           history: params.previousMessages.map((m) => ({
             speaker: m.speaker,
             text: m.hiddenContext ? `${m.text}\n\n${m.hiddenContext}` : m.text,
           })),
           mode: params.subjectMode,
           stockContext: params.stockContext || undefined,
+          audienceScore: params.audienceScore, // 🔥 NEW: Backend को भेज रहे हैं
         }),
         signal,
       });
@@ -348,7 +359,6 @@ export function useDebate(): UseDebateReturn {
           type: 'judge_critique',
           topic: debateTopic,
           mode: subjectMode,
-          // 🔥 Judge को भी सीक्रेट डेटा पता चलेगा
           history: previousMessages.map((m) => ({
             speaker: m.speaker,
             text: m.hiddenContext ? `${m.text}\n\n${m.hiddenContext}` : m.text,
@@ -425,7 +435,7 @@ export function useDebate(): UseDebateReturn {
     []
   );
 
-  // 🔥 FIX: Added 'currentTopic' parameter to check for Topic Drift
+  // Added 'currentTopic' parameter to check for Topic Drift
   const runFallacyCheck = useCallback((messageId: string, text: string, currentTopic: string) => {
     addLog(`[NLP Engine] Scanning argument for fallacies & topic drift...`, 'fallacy');
     fetch(API_ENDPOINT, {
@@ -511,6 +521,7 @@ export function useDebate(): UseDebateReturn {
       setFactChecks({});
       setAgentLogs([]);
       setAudienceScore({ pro: 50, opp: 50 });
+      audienceScoreRef.current = { pro: 50, opp: 50 };
       setSubject(subjectMode);
       setStockData(null);
       streamingTextRef.current = '';
@@ -558,7 +569,9 @@ export function useDebate(): UseDebateReturn {
                 const proPercentage = Math.round((proVotes / total) * 100);
                 const oppPercentage = 100 - proPercentage;
 
-                setAudienceScore({ pro: proPercentage, opp: oppPercentage });
+                const nextScore = { pro: proPercentage, opp: oppPercentage };
+                setAudienceScore(nextScore);
+                audienceScoreRef.current = nextScore; // 🔥 ref को भी तुरंत sync रखते हैं
                 addLog(`[Live Vote] Round ${newVote.round_number}: ${proPercentage}% Pro / ${oppPercentage}% Opp`, 'system');
               }
             }
@@ -601,12 +614,12 @@ export function useDebate(): UseDebateReturn {
             if (mode === 'player' && speaker === 'proponent') {
               setStreamingMessageId(null);
               const rawInput = await waitForPlayerInput();
-              
-              // 🔥 NEW: यहाँ हम [SYSTEM NOTE] को अलग कर रहे हैं ताकि वह UI में न दिखे
+
+              // यहाँ हम [SYSTEM NOTE] को अलग कर रहे हैं ताकि वह UI में न दिखे
               const extracted = extractHiddenContext(rawInput);
               fullText = extracted.cleanText;
               hiddenCtx = extracted.hiddenContext;
-              
+
               if (signal.aborted) break;
             } else {
               addLog(`[LLM Router] Routing context to AI Agent #${speaker === 'proponent' ? '001' : '002'}...`, 'info');
@@ -619,6 +632,7 @@ export function useDebate(): UseDebateReturn {
                   previousMessages: committedMessages.slice(0, -1),
                   subjectMode,
                   stockContext: fetchedStockData,
+                  audienceScore: audienceScoreRef.current, // 🔥 NEW: यहाँ से लाइव स्कोर जा रहा है (हमेशा latest)
                 },
                 signal
               );
@@ -632,7 +646,7 @@ export function useDebate(): UseDebateReturn {
             const completed: DebateMessage = {
               ...placeholder,
               text: cleanText,
-              hiddenContext: hiddenCtx, // 🔥 सीक्रेट डेटा यहाँ सेव हो जाएगा
+              hiddenContext: hiddenCtx,
               isComplete: true,
               isStreaming: false,
               uiArtifact,
@@ -647,7 +661,6 @@ export function useDebate(): UseDebateReturn {
             streamingTextRef.current = '';
 
             if (mode === 'spectator' || speaker === 'opponent') {
-              // 🔥 FIX: Fact-check और Fallacy Check में config.topic भेजा जा रहा है
               runFallacyCheck(messageId, cleanText, config.topic);
               runFactCheck(messageId, cleanText);
             }
@@ -689,7 +702,6 @@ export function useDebate(): UseDebateReturn {
             setMessages((prev) => prev.map((m) => (m.id === critiqueId ? completedCritique : m)));
 
             if (!signal.aborted) {
-              // 🔥 FIX: 'judge' को 'any' कास्ट कर दिया है ताकि TypeScript एरर न दे
               const speakPromise = speak(critiqueText, 'judge' as any);
               const abortPromise = new Promise<void>((resolve) => {
                 signal.addEventListener('abort', () => resolve(), { once: true });
