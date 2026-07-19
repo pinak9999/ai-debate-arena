@@ -7,8 +7,21 @@ export type SpeakerType = 'proponent' | 'opponent' | 'judge';
 interface QueueItem {
   text: string;
   speaker: SpeakerType;
+  language: string; // 🔥 मल्टी-लैंग्वेज सपोर्ट के लिए
   resolve: () => void;
 }
+
+// ─── लैंग्वेज कोड मैपर ───
+const getLangCode = (langName: string = 'Hindi') => {
+  switch(langName.toLowerCase()) {
+    case 'english': return 'en-IN'; // या 'en-US'
+    case 'gujarati': return 'gu-IN';
+    case 'marathi': return 'mr-IN';
+    case 'punjabi': return 'pa-IN';
+    case 'hindi':
+    default: return 'hi-IN';
+  }
+};
 
 export function useSpeech() {
   const [isSpeaking, setIsSpeaking] = useState(false);
@@ -35,7 +48,7 @@ export function useSpeech() {
     processingRef.current = true;
     setIsSpeaking(true);
 
-    // 🟢 Robust Native TTS Fallback Function (100% Fixed)
+    // 🟢 Robust Native TTS Fallback Function (Multi-Language)
     const playNativeTTS = () => {
       // 1. Markdown और स्पेशल कैरेक्टर्स को हटाएं ताकि ब्राउज़र की आवाज़ अटके नहीं
       const cleanText = item.text.replace(/[*#_`~[\]]/g, '').trim();
@@ -58,18 +71,27 @@ export function useSpeech() {
 
         const utterance = new SpeechSynthesisUtterance(chunks[currentChunk]);
         currentUtteranceRef.current = utterance; // Garbage Collection से बचाने के लिए
-        utterance.lang = 'hi-IN';
+        
+        // 🔥 डायनामिक लैंग्वेज सेट करें
+        const targetLangCode = getLangCode(item.language);
+        utterance.lang = targetLangCode;
         
         // आवाज़ का लहज़ा (Pitch)
         utterance.pitch = item.speaker === 'opponent' ? 0.8 : item.speaker === 'judge' ? 0.9 : 1.1;
 
-        // 🔥 Browser Voice Load Fix: ज़बरदस्ती हिंदी आवाज़ सेट करें
+        // 🔥 Browser Voice Load Fix: सही भाषा की आवाज़ ढूंढें
         const setVoiceAndSpeak = () => {
           const voices = window.speechSynthesis.getVoices();
-          const hindiVoice = voices.find(v => v.lang === 'hi-IN' || v.lang.includes('hi'));
           
-          if (hindiVoice) {
-            utterance.voice = hindiVoice;
+          // चुनी हुई भाषा से मैच करने वाली आवाज़ ढूंढें
+          let selectedVoice = voices.find(v => v.lang === targetLangCode);
+          if (!selectedVoice) {
+            // अगर सटीक मैच न मिले, तो उस भाषा के परिवार की कोई भी आवाज़ ढूंढें
+            selectedVoice = voices.find(v => v.lang.includes(targetLangCode.split('-')[0]));
+          }
+          
+          if (selectedVoice) {
+            utterance.voice = selectedVoice;
           }
           
           utterance.onend = () => {
@@ -88,7 +110,7 @@ export function useSpeech() {
           window.speechSynthesis.speak(utterance);
         };
 
-        // अगर ब्राउज़र में आवाज़ें लोड नहीं हुई हैं (खासकर प्रोपोनेंट की पहली बारी में), तो इंतज़ार करें
+        // अगर ब्राउज़र में आवाज़ें लोड नहीं हुई हैं, तो इंतज़ार करें
         if (window.speechSynthesis.getVoices().length === 0) {
           window.speechSynthesis.onvoiceschanged = () => {
             setVoiceAndSpeak();
@@ -103,14 +125,18 @@ export function useSpeech() {
     };
 
     try {
-      // 1. Backend से ElevenLabs API Call
+      // 1. Backend से ElevenLabs API Call (भाषा का डेटा भी भेज रहे हैं)
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: item.text, speaker: item.speaker }),
+        body: JSON.stringify({ 
+          text: item.text, 
+          speaker: item.speaker,
+          language: item.language // 🔥 Backend को भी भाषा का पता रहे
+        }),
       });
 
-      // 🚨 अगर ElevenLabs का कोटा खत्म है (Payment Required) या सर्वर एरर है
+      // 🚨 अगर ElevenLabs का कोटा खत्म है या सर्वर एरर है
       if (!res.ok) {
         console.warn('ElevenLabs API failed, switching to Native TTS...');
         playNativeTTS(); // Fallback ट्रिगर करें
@@ -150,13 +176,14 @@ export function useSpeech() {
     }
   }, [isMuted]);
 
-  const speak = useCallback((text: string, speaker: SpeakerType = 'proponent'): Promise<void> => {
+  // 🔥 speak फंक्शन में language पैरामीटर जोड़ा गया
+  const speak = useCallback((text: string, speaker: SpeakerType = 'proponent', language: string = 'Hindi'): Promise<void> => {
     return new Promise((resolve) => {
       if (isMuted || !text.trim()) {
         resolve();
         return;
       }
-      queueRef.current.push({ text, speaker, resolve });
+      queueRef.current.push({ text, speaker, language, resolve });
       processQueue();
     });
   }, [processQueue, isMuted]);
