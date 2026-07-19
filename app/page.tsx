@@ -1,23 +1,28 @@
 'use client';
 
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RotateCcw, AlertTriangle } from 'lucide-react';
 import HeroSection from '@/components/HeroSection';
 import DebateArena from '@/components/DebateArena';
 import JudgeVerdict from '@/components/JudgeVerdict';
 import ParticleBackground from '@/components/ParticleBackground';
-import { useDebate } from '@/hooks/useDebate';
+import { useDebate, DebateLanguage } from '@/hooks/useDebate'; // DebateLanguage टाइप इम्पोर्ट किया
 import { ModeToggle } from '@/components/ModeToggle';
 
 export default function Home() {
   const debate = useDebate();
+  
+  // 🔥 भाषा स्टेट
+  const [selectedLang, setSelectedLang] = useState<DebateLanguage>('Hindi');
 
   const handleStart = (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality') => {
-    debate.startDebate({ topic: input, totalRounds: rounds, subject });
+    // 🔥 यहाँ भाषा पास की जा रही है
+    debate.startDebate({ topic: input, totalRounds: rounds, subject, language: selectedLang });
   };
 
-  const showHero    = debate.status === 'idle';
-  const showArena   = debate.status !== 'idle';
+  const showHero   = debate.status === 'idle';
+  const showArena  = debate.status !== 'idle';
   const showVerdict = debate.status === 'finished' && !!debate.scores;
 
   return (
@@ -38,7 +43,6 @@ export default function Home() {
         aria-hidden="true"
       />
 
-      {/* Scanline texture */}
       <div
         className="fixed inset-0 pointer-events-none z-0"
         style={{
@@ -58,16 +62,32 @@ export default function Home() {
             exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.3 } }}
             className="flex flex-col items-center justify-center min-h-screen relative z-10"
           >
-            {/* ── MODE SELECTOR BEFORE STARTING DEBATE ────────────────── */}
-            <div className="mb-8 flex flex-col items-center">
-              <p className="text-gray-400 text-xs mb-3 uppercase tracking-widest font-bold">
-                Select Game Mode
-              </p>
-              <ModeToggle
-                mode={debate.mode}
-                setMode={debate.setMode}
-                disabled={debate.status !== 'idle'}
-              />
+            {/* ── MODE & LANGUAGE SELECTOR ────────────────────────── */}
+            <div className="mb-8 flex flex-col items-center gap-6">
+              <div className="flex flex-col items-center">
+                <p className="text-gray-400 text-xs mb-3 uppercase tracking-widest font-bold">Select Game Mode</p>
+                <ModeToggle
+                  mode={debate.mode}
+                  setMode={debate.setMode}
+                  disabled={debate.status !== 'idle'}
+                />
+              </div>
+
+              {/* 🔥 नया लैंग्वेज सेलेक्टर */}
+              <div className="flex flex-col items-center">
+                 <p className="text-gray-400 text-xs mb-3 uppercase tracking-widest font-bold">Select Language</p>
+                 <select 
+                  value={selectedLang} 
+                  onChange={(e) => setSelectedLang(e.target.value as DebateLanguage)}
+                  className="bg-black/40 border border-white/10 text-white text-xs uppercase tracking-widest px-6 py-2 rounded-full cursor-pointer hover:border-blue-500/50 transition-all outline-none"
+                >
+                  <option value="Hindi">Hindi (हिंदी)</option>
+                  <option value="English">English</option>
+                  <option value="Gujarati">Gujarati (ગુજરાતી)</option>
+                  <option value="Marathi">Marathi (मराठी)</option>
+                  <option value="Punjabi">Punjabi (ਪੰਜਾਬੀ)</option>
+                </select>
+              </div>
             </div>
 
             <HeroSection onStart={handleStart} />
@@ -82,14 +102,13 @@ export default function Home() {
             transition={{ duration: 0.55 }}
             className="min-h-screen"
           >
-            {/* ── Top bar ─────────────────────────────────────────────── */}
             <div className="flex items-center justify-between px-4 pt-5 pb-1 max-w-7xl mx-auto relative z-20">
               <div>
                 <h1 className="font-orbitron font-black text-base text-white tracking-[0.18em] uppercase">
                   {debate.subject === 'stock' ? 'Financial War-Room' : debate.subject === 'personality' ? 'Personality Clash Arena' : 'AI Debate Arena'}
                 </h1>
                 <p className="text-white/25 text-[10px] tracking-[0.25em] uppercase">
-                  {debate.status === 'judging' ? 'Evaluating…' : 'Live Session'}
+                  {debate.status === 'judging' ? 'Evaluating…' : 'Live Session'} | Language: {debate.language}
                 </p>
               </div>
               <button
@@ -102,7 +121,6 @@ export default function Home() {
               </button>
             </div>
 
-            {/* ── Error banner ─────────────────────────────────────────── */}
             <AnimatePresence>
               {debate.status === 'error' && debate.error && (
                 <motion.div
@@ -115,15 +133,11 @@ export default function Home() {
                   <div>
                     <p className="text-red-400 text-xs font-semibold mb-0.5">API Error</p>
                     <p className="text-red-300/70 text-xs">{debate.error}</p>
-                    <p className="text-red-300/40 text-[10px] mt-1">
-                      Make sure your backend is running and <code className="font-mono">/api/debate</code> returns SSE events.
-                    </p>
                   </div>
                 </motion.div>
               )}
             </AnimatePresence>
 
-            {/* ── Debate arena ─────────────────────────────────────────── */}
             <DebateArena
               messages={debate.messages}
               streamingText={debate.streamingText}
@@ -147,7 +161,6 @@ export default function Home() {
               stockLoading={debate.stockLoading}
             />
 
-            {/* ── Judge verdict ─────────────────────────────────────────── */}
             <AnimatePresence>
               {showVerdict && debate.scores && (
                 <motion.div
@@ -156,7 +169,6 @@ export default function Home() {
                   animate={{ opacity: 1 }}
                   transition={{ duration: 0.5 }}
                 >
-                  {/* Divider */}
                   <div className="flex items-center gap-4 px-4 max-w-7xl mx-auto mb-6">
                     <div className="flex-1 h-px bg-gradient-to-r from-transparent via-neon-purple/40 to-transparent" />
                     <span className="text-neon-purple text-[10px] font-orbitron font-bold tracking-[0.25em] uppercase">
@@ -164,7 +176,6 @@ export default function Home() {
                     </span>
                     <div className="flex-1 h-px bg-gradient-to-r from-transparent via-neon-purple/40 to-transparent" />
                   </div>
-
                   <JudgeVerdict scores={debate.scores} topic={debate.topic} />
                 </motion.div>
               )}
