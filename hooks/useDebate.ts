@@ -16,7 +16,7 @@ export interface DebateMessage {
   id: string;
   speaker: 'proponent' | 'opponent' | 'judge';
   text: string;
-  hiddenContext?: string;
+  hiddenContext?: string; // 🔥 वेबकैम का सीक्रेट डेटा (Confidence Score) जो UI में नहीं दिखेगा पर AI को जाएगा
   round: number;
   isComplete: boolean;
   isStreaming: boolean;
@@ -44,8 +44,23 @@ export interface JudgeScores {
 
 export type DebateStatus = 'idle' | 'debating' | 'judging' | 'finished' | 'error';
 export type DebateMode = 'spectator' | 'player';
+
+// तीन मोड: Topic / Stock / Personality
 export type DebateSubject = 'topic' | 'stock' | 'personality';
-export type DebateLanguage = 'Hindi' | 'English' | 'Gujarati' | 'Marathi' | 'Punjabi'; // 🔥 NEW
+
+// 🔥 NEW: सपोर्टेड भाषाएं (जितनी चाहो जोड़ सकते हो — बैकएंड कोई भी string स्वीकार करता है,
+// पर UI dropdown के लिए एक fixed list रखना अच्छा रहेगा)
+export type DebateLanguage =
+  | 'Hindi'
+  | 'English'
+  | 'Gujarati'
+  | 'Marathi'
+  | 'Punjabi'
+  | 'Bengali'
+  | 'Tamil'
+  | 'Telugu'
+  | 'Kannada'
+  | 'Malayalam';
 
 export interface ScorePoint {
   round: number;
@@ -53,6 +68,7 @@ export interface ScorePoint {
   opp: number;
 }
 
+// अपग्रेडेड FallacyResult (Tone और Penalty के साथ)
 export interface FallacyResult {
   hasFallacy: boolean;
   fallacyName: string | null;
@@ -87,8 +103,8 @@ export interface StockData {
 export interface DebateConfig {
   topic: string;
   totalRounds: number;
-  subject?: DebateSubject; 
-  language?: DebateLanguage; // 🔥 NEW
+  subject?: DebateSubject; // default 'topic'
+  language?: DebateLanguage | string; // 🔥 NEW: डिबेट किस भाषा में होगी (default 'Hindi')
 }
 
 export interface AgentLog {
@@ -113,7 +129,6 @@ export interface UseDebateReturn {
   currentSpeaker: 'proponent' | 'opponent' | 'judge' | null;
   scores: JudgeScores | null;
   topic: string;
-  language: DebateLanguage; // 🔥 NEW
   error: string | null;
   startDebate: (config: DebateConfig) => void;
   resetDebate: () => void;
@@ -133,6 +148,7 @@ export interface UseDebateReturn {
   subject: DebateSubject;
   stockData: StockData | null;
   stockLoading: boolean;
+  language: DebateLanguage | string; // 🔥 NEW: current debate की भाषा (UI में दिखाने के लिए)
 }
 
 const API_ENDPOINT = '/api/debate';
@@ -142,6 +158,7 @@ function generateId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
 }
 
+// PlayerInput से आने वाले [SYSTEM NOTE] को अलग करने का फंक्शन
 function extractHiddenContext(rawText: string): { cleanText: string; hiddenContext?: string } {
   const match = rawText.match(/\[SYSTEM NOTE:[\s\S]*?\]/);
   if (match) {
@@ -183,7 +200,6 @@ export function useDebate(): UseDebateReturn {
   const [currentSpeaker, setCurrentSpeaker] = useState<'proponent' | 'opponent' | 'judge' | null>(null);
   const [scores, setScores] = useState<JudgeScores | null>(null);
   const [topic, setTopic] = useState('');
-  const [language, setLanguage] = useState<DebateLanguage>('Hindi'); // 🔥 NEW
   const [error, setError] = useState<string | null>(null);
 
   const [scoreHistory, setScoreHistory] = useState<ScorePoint[]>([]);
@@ -198,6 +214,8 @@ export function useDebate(): UseDebateReturn {
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   const [audienceScore, setAudienceScore] = useState<AudienceScore>({ pro: 50, opp: 50 });
 
+  // हमेशा latest audienceScore की ref रखते हैं ताकि useCallback के stale closure
+  // की वजह से API कॉल में पुराना (stale) live-vote डेटा न चला जाए।
   const audienceScoreRef = useRef<AudienceScore>({ pro: 50, opp: 50 });
   useEffect(() => {
     audienceScoreRef.current = audienceScore;
@@ -206,6 +224,14 @@ export function useDebate(): UseDebateReturn {
   const [subject, setSubject] = useState<DebateSubject>('topic');
   const [stockData, setStockData] = useState<StockData | null>(null);
   const [stockLoading, setStockLoading] = useState(false);
+
+  // 🔥 NEW: language state + ref (ref इसलिए ताकि हर fetch call में हमेशा latest/current
+  // debate की भाषा जाए, stale closure की चिंता के बिना — बिल्कुल audienceScoreRef जैसे)
+  const [language, setLanguage] = useState<DebateLanguage | string>('Hindi');
+  const languageRef = useRef<DebateLanguage | string>('Hindi');
+  useEffect(() => {
+    languageRef.current = language;
+  }, [language]);
 
   const currentRoundRef = useRef(1);
 
@@ -222,63 +248,10 @@ export function useDebate(): UseDebateReturn {
     setAgentLogs((prev) => [...prev, { id: generateId(), timestamp: Date.now(), text, type }]);
   }, []);
 
-  useEffect(() => {
-    console.log("Supabase Realtime Connection Start...");
-
-    const voteChannel = supabase
-      .channel('realtime-votes-channel')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'votes' },
-        async (payload) => {
-          console.log('🔥 VOTE EVENT RECEIVED:', payload);
-
-          const activeRound = currentRoundRef.current;
-          console.log('[Live Vote] Fetching fresh count for round:', activeRound);
-
-          const { data, error } = await supabase
-            .from('votes')
-            .select('side')
-            .eq('round_number', activeRound);
-
-          if (error) {
-            console.error(`[Live Vote] Error fetching votes: ${error.message}`);
-            return;
-          }
-
-          if (data) {
-            const total = data.length;
-            const proVotes = data.filter((v) => v.side === 'proponent').length;
-            const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
-            const oppPercentage = 100 - proPercentage;
-
-            const nextScore = { pro: proPercentage, opp: oppPercentage };
-            setAudienceScore(nextScore);
-            audienceScoreRef.current = nextScore;
-
-            addLog(`[Live Vote] Round ${activeRound}: ${proPercentage}% Pro / ${oppPercentage}% Opp (Total votes: ${total})`, 'system');
-            console.log(`[Live Vote] Round ${activeRound} updated: ${proPercentage}% Pro`);
-          }
-        }
-      )
-      .subscribe((status, err) => {
-        if (status === 'SUBSCRIBED') {
-          console.log('✅ Supabase Live Voting 100% Connected!');
-        }
-        if (status === 'CHANNEL_ERROR') {
-          console.error('❌ Supabase Channel Error:', err);
-        }
-      });
-
-    return () => {
-      console.log("Cleaning up Supabase Connection...");
-      supabase.removeChannel(voteChannel);
-    };
-  }, [addLog]);
-
   const resetDebate = useCallback(() => {
     abortControllerRef.current?.abort();
     stopSpeech();
+    supabase.removeAllChannels();
     setStatus('idle');
     setMessages([]);
     setStreamingText('');
@@ -288,7 +261,6 @@ export function useDebate(): UseDebateReturn {
     setCurrentSpeaker(null);
     setScores(null);
     setTopic('');
-    setLanguage('Hindi'); // 🔥 NEW
     setError(null);
     setScoreHistory([]);
     setWaitingForPlayer(false);
@@ -303,6 +275,9 @@ export function useDebate(): UseDebateReturn {
     setStockLoading(false);
     playerInputResolverRef.current = null;
     streamingTextRef.current = '';
+    // language को जानबूझकर reset नहीं कर रहे — ताकि अगली डिबेट में पिछली भाषा याद रहे।
+    // अगर हर बार डिफ़ॉल्ट Hindi चाहिए तो नीचे की लाइन अनकमेंट कर दो:
+    // setLanguage('Hindi'); languageRef.current = 'Hindi';
   }, [stopSpeech]);
 
   const readTextStream = useCallback(
@@ -350,6 +325,7 @@ export function useDebate(): UseDebateReturn {
     }
   }, [addLog]);
 
+  // audienceScore + language दोनों param जोड़े — दोनों backend को भेजे जाते हैं
   const fetchDebateTurn = useCallback(
     async (
       params: {
@@ -360,8 +336,8 @@ export function useDebate(): UseDebateReturn {
         previousMessages: DebateMessage[];
         subjectMode: DebateSubject;
         stockContext?: StockData | null;
-        audienceScore?: AudienceScore; 
-        language: DebateLanguage; // 🔥 NEW
+        audienceScore?: AudienceScore; // 🔥 ऑडियंस का लाइव स्कोर
+        language?: DebateLanguage | string; // 🔥 NEW: डिबेट की भाषा
       },
       signal: AbortSignal
     ): Promise<string> => {
@@ -374,14 +350,15 @@ export function useDebate(): UseDebateReturn {
           round: params.round,
           totalRounds: params.totalRounds,
           speaker: params.speaker,
+          // AI को हिस्ट्री भेजते समय hiddenContext (Webcam Data) भी भेजा जा रहा है
           history: params.previousMessages.map((m) => ({
             speaker: m.speaker,
             text: m.hiddenContext ? `${m.text}\n\n${m.hiddenContext}` : m.text,
           })),
           mode: params.subjectMode,
           stockContext: params.stockContext || undefined,
-          audienceScore: params.audienceScore,
-          language: params.language, // 🔥 NEW
+          audienceScore: params.audienceScore, // 🔥 Backend को भेज रहे हैं
+          language: params.language, // 🔥 NEW: भाषा भी backend को भेज रहे हैं
         }),
         signal,
       });
@@ -402,7 +379,13 @@ export function useDebate(): UseDebateReturn {
   );
 
   const fetchJudgeCritique = useCallback(
-    async (debateTopic: string, previousMessages: DebateMessage[], subjectMode: DebateSubject, debateLang: DebateLanguage, signal: AbortSignal): Promise<string> => {
+    async (
+      debateTopic: string,
+      previousMessages: DebateMessage[],
+      subjectMode: DebateSubject,
+      lang: DebateLanguage | string,
+      signal: AbortSignal
+    ): Promise<string> => {
       addLog(`[Judge] Generating critique for Round...`, 'judge');
       const response = await fetch(API_ENDPOINT, {
         method: 'POST',
@@ -411,7 +394,7 @@ export function useDebate(): UseDebateReturn {
           type: 'judge_critique',
           topic: debateTopic,
           mode: subjectMode,
-          language: debateLang, // 🔥 NEW
+          language: lang, // 🔥 NEW
           history: previousMessages.map((m) => ({
             speaker: m.speaker,
             text: m.hiddenContext ? `${m.text}\n\n${m.hiddenContext}` : m.text,
@@ -429,7 +412,13 @@ export function useDebate(): UseDebateReturn {
   );
 
   const fetchJudgeVerdict = useCallback(
-    async (debateTopic: string, allMessages: DebateMessage[], subjectMode: DebateSubject, debateLang: DebateLanguage, signal: AbortSignal): Promise<JudgeScores> => {
+    async (
+      debateTopic: string,
+      allMessages: DebateMessage[],
+      subjectMode: DebateSubject,
+      lang: DebateLanguage | string,
+      signal: AbortSignal
+    ): Promise<JudgeScores> => {
       addLog(`[System] Compiling full debate history for final verdict...`, 'system');
       const response = await fetch(API_ENDPOINT, {
         method: 'POST',
@@ -438,7 +427,7 @@ export function useDebate(): UseDebateReturn {
           type: 'judge_verdict',
           topic: debateTopic,
           mode: subjectMode,
-          language: debateLang, // 🔥 NEW
+          language: lang, // 🔥 NEW
           history: allMessages.map((m) => ({
             speaker: m.speaker,
             text: m.hiddenContext ? `${m.text}\n\n${m.hiddenContext}` : m.text,
@@ -459,7 +448,13 @@ export function useDebate(): UseDebateReturn {
   );
 
   const fetchRoundScore = useCallback(
-    async (debateTopic: string, round: number, allMessages: DebateMessage[], debateLang: DebateLanguage, signal: AbortSignal) => {
+    async (
+      debateTopic: string,
+      round: number,
+      allMessages: DebateMessage[],
+      lang: DebateLanguage | string,
+      signal: AbortSignal
+    ) => {
       try {
         const response = await fetch(API_ENDPOINT, {
           method: 'POST',
@@ -468,7 +463,7 @@ export function useDebate(): UseDebateReturn {
             type: 'round_score',
             topic: debateTopic,
             round,
-            language: debateLang, // 🔥 NEW
+            language: lang, // 🔥 NEW
             history: allMessages.map((m) => ({
               speaker: m.speaker,
               text: m.hiddenContext ? `${m.text}\n\n${m.hiddenContext}` : m.text,
@@ -490,12 +485,13 @@ export function useDebate(): UseDebateReturn {
     []
   );
 
-  const runFallacyCheck = useCallback((messageId: string, text: string, currentTopic: string, debateLang: DebateLanguage) => {
+  // Added 'currentTopic' + 'lang' parameter (topic drift check + language)
+  const runFallacyCheck = useCallback((messageId: string, text: string, currentTopic: string, lang: DebateLanguage | string) => {
     addLog(`[NLP Engine] Scanning argument for fallacies & topic drift...`, 'fallacy');
     fetch(API_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'fallacy_check', text, topic: currentTopic, language: debateLang }), // 🔥 NEW
+      body: JSON.stringify({ type: 'fallacy_check', text, topic: currentTopic, language: lang }), // 🔥 NEW
     })
       .then((res) => res.json())
       .then((result: FallacyResult) => {
@@ -509,13 +505,13 @@ export function useDebate(): UseDebateReturn {
       .catch(() => {});
   }, [addLog]);
 
-  const runFactCheck = useCallback((messageId: string, claim: string, debateLang: DebateLanguage) => {
+  const runFactCheck = useCallback((messageId: string, claim: string, lang: DebateLanguage | string) => {
     setFactCheckLoading((prev) => ({ ...prev, [messageId]: true }));
     addLog(`[RAG Module] Querying live web + Wikipedia for claim validation...`, 'fact');
     fetch(API_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ type: 'fact_check', claim, language: debateLang }), // 🔥 NEW
+      body: JSON.stringify({ type: 'fact_check', claim, language: lang }), // 🔥 NEW
     })
       .then((res) => res.json())
       .then((result: FactCheckResult) => {
@@ -563,11 +559,13 @@ export function useDebate(): UseDebateReturn {
       const { signal } = controller;
 
       const subjectMode: DebateSubject = config.subject || 'topic';
-      const debateLang: DebateLanguage = config.language || 'Hindi'; // 🔥 NEW
+      // 🔥 NEW: इस डिबेट की भाषा तय करो — config से मिली, वरना default 'Hindi'
+      const debateLanguage: DebateLanguage | string = config.language || 'Hindi';
+      setLanguage(debateLanguage);
+      languageRef.current = debateLanguage;
 
       setTopic(config.topic);
       setTotalRounds(config.totalRounds);
-      setLanguage(debateLang); // 🔥 NEW
       setStatus('debating');
       setMessages([]);
       setScores(null);
@@ -582,7 +580,7 @@ export function useDebate(): UseDebateReturn {
       setStockData(null);
       streamingTextRef.current = '';
 
-      addLog(`[System] Initializing debate environment. Topic: "${config.topic}" (Language: ${debateLang})`, 'system'); // 🔥 NEW
+      addLog(`[System] Initializing debate environment. Topic: "${config.topic}" | Language: ${debateLanguage}`, 'system');
 
       let fetchedStockData: StockData | null = null;
       if (subjectMode === 'stock') {
@@ -602,6 +600,61 @@ export function useDebate(): UseDebateReturn {
       } else if (subjectMode === 'personality') {
         addLog(`[System] Personality Clash Mode activated — Aggressive Analyst vs The Philosopher, grounded via live web research.`, 'system');
       }
+
+      supabase.removeAllChannels();
+      addLog(`[System] Establishing Realtime connection for Live Class Voting...`, 'system');
+
+      // हर INSERT पर हम event के payload के round_number पर भरोसा नहीं करते
+      // (timing race की वजह से mismatch हो सकता है), बल्कि हमेशा currentRoundRef.current
+      // के हिसाब से DB से fresh count निकालते हैं — यही ज़्यादा भरोसेमंद है।
+      // audienceScoreRef.current को भी यहीं तुरंत sync कर रहे हैं, वरना RL
+      // backend को हमेशा stale/पुराना score जाता रहेगा भले ही UI पर सही % दिखे।
+      const voteChannel = supabase
+        .channel('realtime_votes')
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'votes' },
+          async (payload) => {
+            console.log('🔥 VOTE EVENT RECEIVED:', payload); // DEBUG LOG
+
+            const activeRound = currentRoundRef.current;
+            console.log('[Live Vote] Fetching fresh count for round:', activeRound); // DEBUG LOG
+
+            const { data, error } = await supabase
+              .from('votes')
+              .select('side')
+              .eq('round_number', activeRound);
+
+            console.log('[Live Vote] SELECT result:', data, 'error:', error); // DEBUG LOG
+
+            if (error) {
+              addLog(`[Live Vote] Error fetching votes: ${error.message}`, 'system');
+              return;
+            }
+
+            if (data) {
+              const total = data.length;
+              const proVotes = data.filter((v) => v.side === 'proponent').length;
+              const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
+              const oppPercentage = 100 - proPercentage;
+
+              const nextScore = { pro: proPercentage, opp: oppPercentage };
+              setAudienceScore(nextScore);
+              audienceScoreRef.current = nextScore; // ref भी तुरंत sync कर दिया
+
+              addLog(`[Live Vote] Round ${activeRound}: ${proPercentage}% Pro / ${oppPercentage}% Opp (Total votes: ${total})`, 'system');
+              console.log(`[Live Vote] Round ${activeRound} updated: ${proPercentage}% Pro`); // DEBUG LOG
+            }
+          }
+        )
+        .subscribe((status) => {
+          console.log('📡 Realtime channel status:', status); // DEBUG LOG
+          if (status === 'SUBSCRIBED') {
+            addLog(`[System] Live voting channel connected successfully.`, 'system');
+          } else if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT') {
+            addLog(`[System] Live voting channel failed to connect: ${status}`, 'system');
+          }
+        });
 
       const committedMessages: DebateMessage[] = [];
       const speakerOrder = ['proponent', 'opponent'] as const;
@@ -639,6 +692,7 @@ export function useDebate(): UseDebateReturn {
               setStreamingMessageId(null);
               const rawInput = await waitForPlayerInput();
 
+              // यहाँ हम [SYSTEM NOTE] को अलग कर रहे हैं ताकि वह UI में न दिखे
               const extracted = extractHiddenContext(rawInput);
               fullText = extracted.cleanText;
               hiddenCtx = extracted.hiddenContext;
@@ -646,7 +700,7 @@ export function useDebate(): UseDebateReturn {
               if (signal.aborted) break;
             } else {
               addLog(`[LLM Router] Routing context to AI Agent #${speaker === 'proponent' ? '001' : '002'}...`, 'info');
-              console.log('[Live Vote] Sending audienceScore to AI:', audienceScoreRef.current, 'for round', round);
+              console.log('[Live Vote] Sending audienceScore to AI:', audienceScoreRef.current, 'for round', round, '| language:', languageRef.current); // DEBUG LOG
               fullText = await fetchDebateTurn(
                 {
                   topic: config.topic,
@@ -656,8 +710,8 @@ export function useDebate(): UseDebateReturn {
                   previousMessages: committedMessages.slice(0, -1),
                   subjectMode,
                   stockContext: fetchedStockData,
-                  audienceScore: audienceScoreRef.current,
-                  language: debateLang, // 🔥 NEW 
+                  audienceScore: audienceScoreRef.current, // यहाँ से लाइव स्कोर जा रहा है (हमेशा latest)
+                  language: languageRef.current, // 🔥 NEW: भाषा भी हमेशा latest जा रही है
                 },
                 signal
               );
@@ -686,13 +740,12 @@ export function useDebate(): UseDebateReturn {
             streamingTextRef.current = '';
 
             if (mode === 'spectator' || speaker === 'opponent') {
-              runFallacyCheck(messageId, cleanText, config.topic, debateLang); // 🔥 NEW
-              runFactCheck(messageId, cleanText, debateLang); // 🔥 NEW
+              runFallacyCheck(messageId, cleanText, config.topic, languageRef.current);
+              runFactCheck(messageId, cleanText, languageRef.current);
             }
 
             if (!signal.aborted) {
-              // 🔥 NEW: Pass debateLang to useSpeech so it reads in correct accent
-              const speakPromise = (speak as any)(cleanText, speaker, debateLang);
+              const speakPromise = speak(cleanText, speaker);
               const abortPromise = new Promise<void>((resolve) => {
                 signal.addEventListener('abort', () => resolve(), { once: true });
               });
@@ -709,7 +762,7 @@ export function useDebate(): UseDebateReturn {
           }
 
           if (!signal.aborted) {
-            fetchRoundScore(config.topic, round, committedMessages, debateLang, signal); // 🔥 NEW
+            fetchRoundScore(config.topic, round, committedMessages, languageRef.current, signal);
           }
 
           if (round < config.totalRounds && !signal.aborted) {
@@ -721,14 +774,14 @@ export function useDebate(): UseDebateReturn {
             };
             setMessages((prev) => [...prev, critiquePlaceholder]);
 
-            const critiqueText = await fetchJudgeCritique(config.topic, committedMessages, subjectMode, debateLang, signal); // 🔥 NEW
+            const critiqueText = await fetchJudgeCritique(config.topic, committedMessages, subjectMode, languageRef.current, signal);
             const completedCritique = { ...critiquePlaceholder, text: critiqueText, isComplete: true };
 
             committedMessages.push(completedCritique);
             setMessages((prev) => prev.map((m) => (m.id === critiqueId ? completedCritique : m)));
 
             if (!signal.aborted) {
-              const speakPromise = (speak as any)(critiqueText, 'judge', debateLang); // 🔥 NEW
+              const speakPromise = speak(critiqueText, 'judge' as any);
               const abortPromise = new Promise<void>((resolve) => {
                 signal.addEventListener('abort', () => resolve(), { once: true });
               });
@@ -740,10 +793,12 @@ export function useDebate(): UseDebateReturn {
         if (!signal.aborted) {
           setStatus('judging');
           setCurrentSpeaker(null);
-          const verdict = await fetchJudgeVerdict(config.topic, committedMessages, subjectMode, debateLang, signal); // 🔥 NEW
+          const verdict = await fetchJudgeVerdict(config.topic, committedMessages, subjectMode, languageRef.current, signal);
           setScores(verdict);
           setStatus('finished');
         }
+
+        supabase.removeChannel(voteChannel);
       } catch (err) {
         if (signal.aborted) return;
         const msg = err instanceof Error ? err.message : 'An unexpected error occurred';
@@ -757,7 +812,7 @@ export function useDebate(): UseDebateReturn {
 
   return {
     status, messages, streamingText, streamingMessageId, currentRound, totalRounds,
-    currentSpeaker, scores, topic, language, error, startDebate, resetDebate,
+    currentSpeaker, scores, topic, error, startDebate, resetDebate,
     isSpeaking, isMuted, toggleMute, scoreHistory, mode, setMode,
     waitingForPlayer, submitPlayerArgument, fallacies, factChecks, factCheckLoading,
     agentLogs,
@@ -765,5 +820,6 @@ export function useDebate(): UseDebateReturn {
     subject,
     stockData,
     stockLoading,
+    language, // 🔥 NEW
   };
 }
