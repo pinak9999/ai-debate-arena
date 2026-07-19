@@ -737,4 +737,4 @@ Respond STRICTLY with JSON ONLY using this format:
   } catch (error) {
     return NextResponse.json({ error: 'An error occurred processing your request.' }, { status: 500 });
   }
-}
+} 
