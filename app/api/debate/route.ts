@@ -85,7 +85,6 @@ async function fetchWikiSnippet(query: string): Promise<{ title: string; snippet
   }
 }
 
-// 🔥 FIX 1: Fact-Checker को जेनेरिक नाम की जगह "असली दावे (Claims)" खोजने के लिए स्मार्ट बनाया गया है
 async function extractSearchCandidates(text: string): Promise<string[]> {
   try {
     const { text: raw } = await generateText({
@@ -385,12 +384,13 @@ Use these EXACT numbers naturally in your argument.`
           : `Rely on strong logical deduction.`;
       }
 
+      // 🔥 FIX: Strict ban on robotic phrasing and repetitive connector words.
       const antiRepetitionRule = `
-CRITICAL DEBATE RULES:
+CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 1. NEVER start your response with "माननीय जज", "अध्यक्ष महोदय", or polite greetings. Jump directly into your argument naturally.
 2. NEVER CONCEDE. Never say "मैं सहमत हूँ" or adopt the opponent's conclusion. You must fiercely defend your stance.
-3. STRICT ANTI-REPETITION: DO NOT copy-paste sentences or exact phrases from previous rounds. You MUST bring a NEW logical angle, NEW risk, or NEW metric in every single round.
-4. If you repeat the exact same sentence as Round 1, you will be penalized. Evolve the argument.
+3. BAN ON ROBOTIC CONNECTORS: Do NOT repeatedly use formal connector words like "इसके अलावा", "इसके अतिरिक्त", or "साथ ही". Use natural, sharp, and aggressive transitions like a real human college debater.
+4. STRICT ANTI-REPETITION: DO NOT copy-paste sentences or exact phrases from previous rounds. You MUST bring a NEW logical angle, NEW risk, or NEW metric in every single round.
 5. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", or "Opponent's logic". Just destroy their logic naturally.
       `.trim();
 
@@ -503,7 +503,7 @@ Language: STRICTLY HINDI (DEVANAGARI). Highly intellectual and sharp tone.
           model: groq('llama-3.1-8b-instant'),
           temperature: 0.7,
           system: leaderSystemPrompt,
-          messages: [...messages, { role: 'user', content: `Respond directly in Hindi. Remember: Do NOT use "माननीय जज". Do NOT agree with the opponent.` }] as any,
+          messages: [...messages, { role: 'user', content: `Respond directly in Hindi. Remember: Do NOT use formal greetings. AVOID repetitive words like "इसके अलावा".` }] as any,
         });
 
         const cleanSwarm = stripMetaCommentary(stripFakeCitations(swarmRaw));
@@ -541,7 +541,7 @@ ${roundInstruction}
 Language: STRICTLY HINDI (DEVANAGARI). Professional, persuasive.
         `.trim();
 
-      const draftMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly in Hindi without formal greetings.` }];
+      const draftMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly in Hindi without formal greetings and avoid robotic connector words like "इसके अलावा".` }];
 
       const { text: initialDraft } = await generateText({
         model: groq('llama-3.1-8b-instant'),
@@ -551,9 +551,9 @@ Language: STRICTLY HINDI (DEVANAGARI). Professional, persuasive.
       });
 
       const criticPrompt = isStockMode
-        ? `Check this draft. Does it stay bullish? Is it free of "माननीय जज" and polite fluff? Is it in good Hindi? Draft: "${initialDraft}"
+        ? `Check this draft. Does it stay bullish? Is it free of robotic fluff like "इसके अलावा" and polite greetings? Is it in good Hindi? Draft: "${initialDraft}"
 Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason in hindi"}.`
-        : `Check this draft. Does it strictly defend its stance? Did it avoid agreeing with the opponent? Did it avoid robotic greetings like "माननीय जज" and academic fallacy names? Draft: "${initialDraft}"
+        : `Check this draft. Does it strictly defend its stance? Did it avoid agreeing with the opponent? Did it avoid robotic greetings and repetitive words like "इसके अलावा"? Draft: "${initialDraft}"
 Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason in hindi"}.`;
 
       const { text: criticOutput } = await generateText({
@@ -568,7 +568,7 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
         const finalMessages = [
           ...draftMessages,
           { role: 'assistant', content: initialDraft },
-          { role: 'user', content: `CRITIC FEEDBACK: "${evaluation.feedback}". Fix the flaws, drop any robotic greetings, and provide a sharp response in Hindi.` },
+          { role: 'user', content: `CRITIC FEEDBACK: "${evaluation.feedback}". Fix the flaws, drop any robotic greetings or repetitive words like "इसके अलावा", and provide a sharp response in Hindi.` },
         ];
 
         const { text: rewrittenDraft } = await generateText({
@@ -653,7 +653,7 @@ Respond STRICTLY with JSON ONLY:
       return NextResponse.json(parsed);
     }
 
-    // 🔥 FIX 2: Fallacy Checker को स्मार्ट बनाया गया है ताकि डिबेट की टैक्टिक्स को पेनाल्टी न दे
+    // 🔥 FIX 2: Fallacy Checker 2.0 - स्मार्ट बनाया गया है ताकि वह फालतू पेनाल्टी न दे
     // ─────────────────────────────────────────────────────────────────
     // 5. FALLACY & TONE CHECK (SMART UPGRADE)
     // ─────────────────────────────────────────────────────────────────
@@ -663,10 +663,12 @@ Respond STRICTLY with JSON ONLY:
 Topic: "${topic}"
 Statement: "${text}"
 
-CRITICAL DEBATE RULES:
-1. Counter-arguments are NOT fallacies: Questioning the opponent's claims, asking for data on their specific examples (like Startup India), or challenging their logic is a VALID DEBATE TACTIC. Do NOT flag it as "Off-Topic" or "Strawman".
-2. Only flag GENUINE fallacies: Ad Hominem (personal insults), Strawman (completely misrepresenting the opponent), or Falsified Timelines (e.g., blaming a government for statistics from before they were in power).
-3. If there is NO real logical fallacy, you MUST set "hasFallacy": false. Do not be overly harsh.
+CRITICAL DEBATE RULES (AVOID FALSE POSITIVES):
+1. Counter-arguments are NOT fallacies: Questioning the opponent's claims, asking for data, or challenging their logic is a VALID DEBATE TACTIC. Do NOT flag it as "Off-Topic" or "Strawman".
+2. Citing sources (like Wikipedia, Journals) is NOT "Appeal to Authority". It is providing evidence. Do NOT penalize it.
+3. Rhetorical questions or pointing out contradictions is NOT a "False Dilemma".
+4. Only flag GENUINE, extreme fallacies: Ad Hominem (direct personal insults), Strawman (completely misrepresenting the opponent).
+5. If there is NO real logical fallacy, you MUST set "hasFallacy": false. DO NOT BE OVERLY SENSITIVE.
 
 Calculate 'Aggression Score' (0-100) and 'Logic Score' (0-100).
 
@@ -737,4 +739,4 @@ Respond STRICTLY with JSON ONLY using this format:
   } catch (error) {
     return NextResponse.json({ error: 'An error occurred processing your request.' }, { status: 500 });
   }
-} 
+}
