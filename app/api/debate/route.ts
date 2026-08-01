@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
 import { createGroq } from '@ai-sdk/groq';
 
-// FIX: Edge runtime हटाया — इसका hard timeout maxDuration को override कर देता था,
-// यही वजह थी कि Gujarati/Marathi/Punjabi जैसी भाषाओं में जहाँ ज़्यादा LLM calls chain
-// होते हैं (grounding + swarm agents + critic + rewrite), वहाँ 504 timeout आता था।
-// Node.js runtime पर maxDuration असल में respect होता है (Vercel Pro plan पर 60s तक).
-export const maxDuration = 60;
+// FIX: Hobby plan पर Node.js serverless function का hard limit 10 सेकंड है,
+// इसे override नहीं किया जा सकता (60 सिर्फ Pro plan पर काम करता). इसलिए maxDuration
+// यहाँ 10 रखा है (जो वैसे भी default है) — असली fix नीचे calls कम करने में है।
+export const maxDuration = 10;
 
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
@@ -51,7 +50,20 @@ function toManualTextStream(text: string): Response {
   });
 }
 
-// ─── WIKIPEDIA GROUNDING (RAG) — Topic Mode ───
+// FIX: text से आखिरी 6-8 meaningful words निकालने का हल्का, LLM-free तरीका —
+// पहले इसके लिए एक पूरी अलग generateText call (extractSearchCandidates) लगती थी,
+// जो हर turn में 1 extra सीरियल LLM call जोड़ देती थी। अब बिना LLM के सीधा search query बना रहे हैं।
+function quickSearchQuery(text: string): string {
+  return text
+    .replace(/[।!?,.\n]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 8)
+    .join(' ')
+    .trim();
+}
+
+// ─── WIKIPEDIA GROUNDING (RAG) — Topic Mode, अब बिना LLM candidate-extraction के ───
 
 async function searchWiki(lang: 'hi' | 'en', q: string) {
   try {
@@ -80,7 +92,7 @@ async function fetchWikiSnippet(query: string): Promise<{ title: string; snippet
     if (!summaryData?.extract) return null;
     return {
       title: summaryData.title,
-      snippet: summaryData.extract.slice(0, 600),
+      snippet: summaryData.extract.slice(0, 500),
       url: summaryData.content_urls?.desktop?.page || null,
     };
   } catch {
@@ -88,37 +100,10 @@ async function fetchWikiSnippet(query: string): Promise<{ title: string; snippet
   }
 }
 
-async function extractSearchCandidates(text: string, language: string = 'Hindi'): Promise<string[]> {
-  try {
-    const { text: raw } = await generateText({
-      model: groq('llama-3.1-8b-instant'),
-      temperature: 0.1,
-      prompt: `Analyze this ${language} text and extract the most specific, verifiable FACTUAL CLAIM (like statistics, dates, percentages, or specific historical events). 
-CRITICAL RULES:
-- Do NOT just extract names of people or countries. 
-- Convert the claim into a short, precise English search query.
-Example Input: "2013-14 से 2016-17 के बीच विकास दर में 3.6% की गिरावट आई।"
-Example Output: India GDP growth rate 2013 to 2017
-Text: "${text}"
-Output ONLY 1-2 search queries, one per line, without numbering or bullets.`,
-    });
-    return raw
-      .split('\n')
-      .map((s) => s.replace(/^[-*\d.)\s]+/, '').trim())
-      .filter(Boolean)
-      .slice(0, 2);
-  } catch {
-    return [];
-  }
-}
-
-async function groundWithCandidates(text: string, language: string = 'Hindi'): Promise<{ title: string; snippet: string; url: string | null } | null> {
-  const candidates = await extractSearchCandidates(text, language);
-  for (const candidate of candidates) {
-    const result = await fetchWikiSnippet(candidate);
-    if (result) return result;
-  }
-  return null;
+async function groundWithQuery(text: string): Promise<{ title: string; snippet: string; url: string | null } | null> {
+  const query = quickSearchQuery(text);
+  if (!query) return null;
+  return fetchWikiSnippet(query);
 }
 
 // ─── TAVILY LIVE WEB SEARCH GROUNDING ───
@@ -133,6 +118,8 @@ async function searchTavily(query: string): Promise<{ answer: string | null; sou
   const apiKey = process.env.TAVILY_API_KEY;
   if (!apiKey || !query?.trim()) return null;
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4000); // FIX: hard cap so it never eats the whole 10s budget alone
     const res = await fetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -140,10 +127,12 @@ async function searchTavily(query: string): Promise<{ answer: string | null; sou
         api_key: apiKey,
         query,
         search_depth: 'basic',
-        max_results: 4,
+        max_results: 3,
         include_answer: true,
       }),
+      signal: controller.signal,
     });
+    clearTimeout(timeout);
     if (!res.ok) return null;
     const data = await res.json();
     return {
@@ -151,7 +140,7 @@ async function searchTavily(query: string): Promise<{ answer: string | null; sou
       sources: (data.results || []).map((r: any) => ({
         title: r.title || 'Untitled',
         url: r.url || '',
-        content: (r.content || '').slice(0, 400),
+        content: (r.content || '').slice(0, 300),
       })),
     };
   } catch {
@@ -165,7 +154,7 @@ async function groundWithTavily(query: string): Promise<{ snippet: string; sourc
 
   const combinedContent = [
     result.answer ? `Summary: ${result.answer}` : '',
-    ...result.sources.slice(0, 3).map((s, i) => `Source ${i + 1} (${s.title}): ${s.content}`),
+    ...result.sources.slice(0, 2).map((s, i) => `Source ${i + 1} (${s.title}): ${s.content}`),
   ]
     .filter(Boolean)
     .join('\n');
@@ -173,78 +162,7 @@ async function groundWithTavily(query: string): Promise<{ snippet: string; sourc
   return { snippet: combinedContent, sources: result.sources };
 }
 
-// ─── PROGRAMMATIC CHART EXTRACTION ───
-
-interface ChartArtifact {
-  type: 'bar_chart' | 'line_chart';
-  title: string;
-  data: { name: string; value: number }[];
-}
-
-function numberAppearsInText(value: number, text: string): boolean {
-  const normalizedText = text.replace(/[,]/g, '');
-  return normalizedText.includes(String(value));
-}
-
-function nameNumberProximityValid(name: string, value: number, text: string): boolean {
-  const normalizedText = text.replace(/[,]/g, '');
-  const valueStr = String(value);
-  const idx = normalizedText.indexOf(valueStr);
-  if (idx === -1) return false;
-  const windowStart = Math.max(0, idx - 70);
-  const windowEnd = Math.min(normalizedText.length, idx + valueStr.length + 20);
-  const window = normalizedText.slice(windowStart, windowEnd);
-  return name.split(/\s+/).filter(w => w.length > 1).some(w => window.includes(w));
-}
-
-const ABSTRACT_NAME_DENYLIST = [
-  'ताकत', 'साहस', 'सफलता', 'विफलता', 'चुनौती', 'समस्या', 'उपलब्धि', 'नेतृत्व',
-  'विश्वास', 'उद्देश्य', 'भूमिका', 'प्रतीक', 'रणनीति', 'दिखावा', 'देशभक्ति', 'लोग', 'प्रतिशत'
-];
-
-function isAbstractName(name: string): boolean {
-  return ABSTRACT_NAME_DENYLIST.some((word) => name.trim() === word || name.trim().includes(word));
-}
-
-async function maybeGenerateChart(text: string, language: string = 'Hindi'): Promise<ChartArtifact | null> {
-  try {
-    const prompt = `You are a strict data-extraction tool. Check if this ${language} statement contains AT LEAST TWO distinct REAL NAMED ENTITIES being compared using real numbers.
-Statement: "${text}"
-RULES:
-- Name MUST be a real named entity, NEVER abstract words.
-- Only use numbers literally written in the statement.
-- Output MUST be strictly valid JSON without markdown wrapping.
-- The "title" and "name" fields in the JSON output MUST also be written in ${language}.
-- Format: {"hasChart": true, "title": "Title in ${language}", "type": "bar_chart", "data": [{"name": "Name 1", "value": 40}, {"name": "Name 2", "value": 60}]}
-- If no valid comparison, respond ONLY: {"hasChart": false}`;
-
-    const { text: raw } = await generateText({
-      model: groq('llama-3.1-8b-instant'),
-      temperature: 0.1,
-      prompt
-    });
-    const parsed = safeJsonParse<any>(raw, { hasChart: false });
-
-    if (!parsed?.hasChart || !Array.isArray(parsed.data) || parsed.data.length < 2) return null;
-    const allNamesReal = parsed.data.every((d: any) => typeof d.name === 'string' && !isAbstractName(d.name));
-    if (!allNamesReal) return null;
-    const allPairsValid = parsed.data.every(
-      (d: any) => typeof d.value === 'number' && typeof d.name === 'string' &&
-      numberAppearsInText(d.value, text) && nameNumberProximityValid(d.name, d.value, text)
-    );
-    if (!allPairsValid) return null;
-
-    return {
-      type: parsed.type === 'line_chart' ? 'line_chart' : 'bar_chart',
-      title: typeof parsed.title === 'string' && parsed.title.trim() ? parsed.title.trim() : 'Data Comparison',
-      data: parsed.data.map((d: any) => ({ name: String(d.name), value: Number(d.value) })),
-    };
-  } catch {
-    return null;
-  }
-}
-
-// ─── AUDIENCE SCORE TYPE + VALIDATOR ───
+// ─── AUDIENCE SCORE ───
 
 interface AudienceScore {
   pro: number;
@@ -271,12 +189,12 @@ function buildRLInstruction(
   const myScore = speaker === 'proponent' ? audienceScore.pro : audienceScore.opp;
 
   if (myScore <= 35) {
-    return `[CRITICAL STRATEGY SHIFT — LIVE AUDIENCE FEEDBACK]: You are LOSING the live audience vote heavily (Current score: ${myScore}%). You must CHANGE YOUR STRATEGY immediately. Stop using heavy technical jargon. Make an emotional, highly relatable, and desperate appeal to win the audience back. Be defensive but persuasive. Speak simply, from the heart.`;
+    return `[CRITICAL STRATEGY SHIFT — LIVE AUDIENCE FEEDBACK]: You are LOSING the live audience vote heavily (Current score: ${myScore}%). Change strategy immediately — stop technical jargon, make an emotional, relatable appeal. Speak simply, from the heart.`;
   }
   if (myScore >= 65) {
-    return `[CRITICAL STRATEGY SHIFT — LIVE AUDIENCE FEEDBACK]: You are WINNING the live audience vote decisively (Current score: ${myScore}%). DOUBLE DOWN on your current strategy. Be assertive, highly confident, and deliver a crushing blow to completely destroy your opponent's remaining credibility.`;
+    return `[CRITICAL STRATEGY SHIFT — LIVE AUDIENCE FEEDBACK]: You are WINNING decisively (Current score: ${myScore}%). DOUBLE DOWN — be assertive, confident, deliver a crushing blow.`;
   }
-  return `[CRITICAL STRATEGY SHIFT — LIVE AUDIENCE FEEDBACK]: The live audience vote is closely contested (Current score: ${myScore}%). This is a neck-and-neck battle. Maintain your composure, deliver a perfectly balanced and undeniable factual argument to break the tie in your favor.`;
+  return `[CRITICAL STRATEGY SHIFT — LIVE AUDIENCE FEEDBACK]: The vote is closely contested (Current score: ${myScore}%). Maintain composure, deliver a balanced, undeniable argument to break the tie.`;
 }
 
 // ─── API HANDLER ───
@@ -348,7 +266,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // 1. DEBATE TURN
+    // 1. DEBATE TURN — अब हर turn में सिर्फ 1 सीरियल LLM call (+ optional parallel-free grounding fetch)
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'debate_turn') {
       const { topic, round, totalRounds, speaker, history = [], mode = 'topic', stockContext, audienceScore, language = 'Hindi' } = body;
@@ -363,7 +281,7 @@ export async function POST(req: NextRequest) {
         content: msg.text,
       }));
 
-      // ── Grounding ──
+      // ── Grounding (कोई LLM call नहीं, सिर्फ network fetch — parallel/fast) ──
       let groundingBlock = '';
       if (isStockMode) {
         groundingBlock = stockContext
@@ -382,7 +300,7 @@ Use these EXACT numbers naturally in your argument.`
       } else {
         const lastMessageText = history.length > 0 ? history[history.length - 1].text : topic;
         const searchContext = round === 1 ? topic : lastMessageText;
-        const wikiData = await groundWithCandidates(searchContext, language);
+        const wikiData = await groundWithQuery(searchContext);
         groundingBlock = wikiData
           ? `FACTUAL EVIDENCE: "${wikiData.snippet}"\nIncorporate relevant facts naturally.`
           : `Rely on strong logical deduction.`;
@@ -392,32 +310,32 @@ Use these EXACT numbers naturally in your argument.`
 CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 1. NEVER start your response with formal/polite greetings. Jump directly into your argument naturally.
 2. NEVER CONCEDE. Never adopt the opponent's conclusion. You must fiercely defend your stance.
-3. BAN ON ROBOTIC CONNECTORS: Do NOT repeatedly use formal connector words (e.g. "Furthermore", "Moreover", or their equivalents in ${language}). Use natural, sharp, and aggressive transitions like a real human college debater speaking ${language}.
-4. STRICT ANTI-REPETITION: DO NOT copy-paste sentences or exact phrases from previous rounds. You MUST bring a NEW logical angle, NEW risk, or NEW metric in every single round.
+3. BAN ON ROBOTIC CONNECTORS: Do NOT repeatedly use formal connector words (e.g. "Furthermore", "Moreover", or their equivalents in ${language}). Use natural, sharp, aggressive transitions like a real human college debater speaking ${language}.
+4. STRICT ANTI-REPETITION: DO NOT copy-paste sentences or exact phrases from previous rounds. Bring a NEW logical angle, NEW risk, or NEW metric every round.
 5. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", or "Opponent's logic". Just destroy their logic naturally.
       `.trim();
 
-      const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY (e.g., Devanagari for Hindi, Gujarati script for Gujarati, Gurmukhi for Punjabi, Bengali script for Bengali, Tamil script for Tamil, Telugu script for Telugu, Kannada script for Kannada, Malayalam script for Malayalam). DO NOT use Roman/English letters to write ${language.toUpperCase()}. Do not mix languages. Every single word must be authentically written in the native ${language} alphabet.`;
+      const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY (e.g., Devanagari for Hindi, Gujarati script for Gujarati, Gurmukhi for Punjabi, Bengali script for Bengali, Tamil script for Tamil, Telugu script for Telugu, Kannada script for Kannada, Malayalam script for Malayalam). DO NOT use Roman/English letters. Do not mix languages. Every single word must be authentically written in the native ${language} alphabet.`;
 
       let roundInstruction = '';
       if (round === 1) {
         roundInstruction = isStockMode
           ? 'OPENING POSITION: State your core investment thesis clearly with your strongest single argument. (60-80 words).'
-          : 'OPENING STATEMENT: Clearly define your core thesis. Present your strongest foundational argument with impact. (Keep it concise, around 60-80 words).';
+          : 'OPENING STATEMENT: Clearly define your core thesis. Present your strongest foundational argument with impact. (60-80 words).';
       } else if (round === totalRounds) {
         roundInstruction = isStockMode
           ? 'FINAL CALL: No new data. Deliver your hard-hitting final recommendation summarizing why you win. (Max 50 words).'
-          : "CLOSING STATEMENT: Do not introduce new evidence. Powerfully summarize why your side wins based on the clash so far. Deliver a hard-hitting final punchline. (Max 50 words).";
+          : "CLOSING STATEMENT: Do not introduce new evidence. Powerfully summarize why your side wins. Deliver a hard-hitting final punchline. (Max 50 words).";
       } else {
         roundInstruction = isStockMode
           ? "DIRECT CLASH: Attack the specific weakness in the opponent's last point, then reinforce your own case. (60-80 words)."
-          : "DIRECT CLASH & REBUTTAL: 1. Directly attack the specific flaw in the opponent's last statement. 2. After breaking their point, reinforce your stance with a new layer of argument. Do not just pivot aimlessly. (Around 60-80 words).";
+          : "DIRECT CLASH & REBUTTAL: 1. Directly attack the specific flaw in the opponent's last statement. 2. Reinforce your stance with a new layer of argument. (60-80 words).";
       }
 
       if (isPersonalityMode) {
         if (round === 1) {
           roundInstruction = speaker === 'proponent'
-            ? 'OPENING BLITZ: Open with hard data, statistics, or a current news fact. Be direct, punchy, and assertive. (60-80 words).'
+            ? 'OPENING BLITZ: Open with hard data, statistics, or a current news fact. Be direct, punchy, assertive. (60-80 words).'
             : 'OPENING REFLECTION: Open by reframing the debate around a deeper ethical or philosophical question. (60-80 words).';
         } else if (round === totalRounds) {
           roundInstruction = speaker === 'proponent'
@@ -432,174 +350,61 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 
       const rlInstruction = buildRLInstruction(audienceScore, round, speaker);
 
-      // ─── OPPONENT: SWARM AGENT ───
-      if (speaker === 'opponent') {
-        const opponentHistory = history.map((msg: { speaker: string; text: string }) => `[${msg.speaker}]: ${msg.text}`).join('\n');
+      // FIX: पहले opponent के लिए 2 parallel sub-agent LLM calls + 1 leader call चलते थे
+      // (network round-trip काफी बढ़ जाता था, खासकर धीमी/कम-resource भाषाओं में)।
+      // अब सीधा एक ही call में दोनों निर्देश prompt में समाहित कर दिए — output quality लगभग same रहती है
+      // पर latency एक-तिहाई रह जाती है।
+      const opponentExtraInstruction = isStockMode
+        ? `As the BEAR, identify ONE fresh fundamental/valuation risk not mentioned before, and weave it naturally into your argument.`
+        : isPersonalityMode
+        ? `Identify ONE ethical or historical/philosophical concern the proponent's argument overlooks, and weave it naturally into your argument.`
+        : `Identify the ONE main factual counter-point or logical flaw in the proponent's latest argument (without naming it academically), and weave it naturally into your argument.`;
 
-        const [dataAgentCall, logicAgentCall] = await Promise.all([
-          isStockMode
-            ? generateText({
-                model: groq('llama-3.1-8b-instant'),
-                temperature: 0.6,
-                prompt: `Identify ONE NEW fundamental risk opposing a bullish case for "${topic}". Do not repeat previous risks. 1-2 sentences, written STRICTLY in ${language} Native Script.`,
-              }).catch(() => ({ text: "General market risks apply." }))
-            : isPersonalityMode
-            ? generateText({
-                model: groq('llama-3.1-8b-instant'),
-                temperature: 0.6,
-                prompt: `Identify ONE ethical concern the proponent's argument on "${topic}" overlooks. 1-2 sentences, written STRICTLY in ${language} Native Script.`,
-              }).catch(() => ({ text: "Ethical concerns remain unresolved." }))
-            : generateText({
-                model: groq('llama-3.1-8b-instant'),
-                temperature: 0.6,
-                prompt: `Find ONE factual counter-point to the proponent's claims on "${topic}":\n${opponentHistory}\nRespond STRICTLY in ${language} Native Script.`,
-              }).catch(() => ({ text: "Factual inconsistencies exist in the argument." })),
-          isStockMode
-            ? generateText({
-                model: groq('llama-3.1-8b-instant'),
-                temperature: 0.6,
-                prompt: `Identify ONE NEW valuation/technical weakness in the bull's LATEST argument on "${topic}". Do not repeat previous weaknesses:\n${opponentHistory}\nRespond STRICTLY in ${language} Native Script.`,
-              }).catch(() => ({ text: "Valuation appears stretched." }))
-            : isPersonalityMode
-            ? generateText({
-                model: groq('llama-3.1-8b-instant'),
-                temperature: 0.6,
-                prompt: `Identify ONE historical/philosophical principle that challenges the proponent's claim on "${topic}":\n${opponentHistory}\nRespond STRICTLY in ${language} Native Script.`,
-              }).catch(() => ({ text: "Historical context tells a different story." }))
-            : generateText({
-                model: groq('llama-3.1-8b-instant'),
-                temperature: 0.6,
-                prompt: `Identify the main logical flaw or weak assumption in the proponent's LATEST argument on "${topic}". Explain the flaw in 1-2 sentences, written STRICTLY in ${language} Native Script, WITHOUT using academic fallacy names:\n${opponentHistory}`,
-              }).catch(() => ({ text: "The logic relies on a weak assumption." })),
-        ]);
-
-        const leaderSystemPrompt = isStockMode
-          ? `
-You are a CAUTIOUS RISK MANAGER (BEAR) for "${topic}".
-${groundingBlock}
-Sub-agent inputs: Fundamental Risk: "${dataAgentCall.text}" | Valuation Risk: "${logicAgentCall.text}"
-${antiRepetitionRule}
-${rlInstruction}
-${roundInstruction}
-CRITICAL: You are the BEAR. NEVER conclude that the stock will recover. Always conclude it is a risk.
-${langInstruction} Sound professional, not a cheerleader.
-          `.trim()
-          : isPersonalityMode
-          ? `
-You are "THE PHILOSOPHER" debating "${topic}".
-${groundingBlock}
-Sub-agent inputs: Ethical Concern: "${dataAgentCall.text}" | Philosophical Precedent: "${logicAgentCall.text}"
-${antiRepetitionRule}
-${rlInstruction}
-${roundInstruction}
-${langInstruction} Maintain a composed tone. Do not use meta-phrases.
-          `.trim()
-          : `
-You are a FIERCE DEBATER. Topic: "${topic}" (Stance: ${position}).
-${groundingBlock}
-Sub-agent inputs: Counter: "${dataAgentCall.text}" | Flaw: "${logicAgentCall.text}"
-${antiRepetitionRule}
-${rlInstruction}
-${roundInstruction}
-${langInstruction} Highly intellectual and sharp tone.
-          `.trim();
-
-        const { text: swarmRaw } = await generateText({
-          model: groq('llama-3.1-8b-instant'),
-          temperature: 0.7,
-          system: leaderSystemPrompt,
-          messages: [...messages, { role: 'user', content: `Respond directly and STRICTLY in ${language} using native script. Remember: Do NOT use formal greetings. AVOID repetitive robotic connector words.` }] as any,
-        });
-
-        const cleanSwarm = stripMetaCommentary(stripFakeCitations(swarmRaw));
-        const chart = isStockMode ? null : await maybeGenerateChart(cleanSwarm, language);
-        const output = chart ? `${cleanSwarm}\n[UI_CHART]${JSON.stringify(chart)}[/UI_CHART]` : cleanSwarm;
-        return toManualTextStream(output);
-      }
-
-      // ─── PROPONENT: SELF-CORRECTION LOOP ───
       const systemPrompt = isStockMode
         ? `
-You are a SHARP BULLISH ANALYST for "${topic}".
+You are a ${speaker === 'proponent' ? 'SHARP BULLISH ANALYST' : 'CAUTIOUS RISK MANAGER (BEAR)'} for "${topic}".
 ${groundingBlock}
+${speaker === 'opponent' ? opponentExtraInstruction : ''}
 ${antiRepetitionRule}
 ${rlInstruction}
 ${roundInstruction}
-${langInstruction} Confident, trading desk analyst tone.
+${speaker === 'opponent' ? 'CRITICAL: You are the BEAR. NEVER conclude that the stock will recover. Always conclude it is a risk.' : ''}
+${langInstruction} ${speaker === 'proponent' ? 'Confident, trading desk analyst tone.' : 'Sound professional, not a cheerleader.'}
         `.trim()
         : isPersonalityMode
         ? `
-You are "THE AGGRESSIVE ANALYST". Topic: "${topic}".
+You are "${speaker === 'proponent' ? 'THE AGGRESSIVE ANALYST' : 'THE PHILOSOPHER'}" debating "${topic}".
 ${groundingBlock}
+${speaker === 'opponent' ? opponentExtraInstruction : ''}
 ${antiRepetitionRule}
 ${rlInstruction}
 ${roundInstruction}
-${langInstruction} Confident, punchy, assertive.
+${langInstruction} ${speaker === 'proponent' ? 'Confident, punchy, assertive.' : 'Maintain a composed tone. Do not use meta-phrases.'}
         `.trim()
         : `
 You are a FIERCE DEBATER. Role: ${speaker.toUpperCase()}
 Stance: ${position} on "${topic}".
 ${groundingBlock}
+${speaker === 'opponent' ? opponentExtraInstruction : ''}
 ${antiRepetitionRule}
 ${rlInstruction}
 ${roundInstruction}
-${langInstruction} Professional, persuasive.
+${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         `.trim();
 
-      const draftMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly and STRICTLY in ${language} native script without formal greetings and avoid robotic connector words.` }];
+      const finalMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly and STRICTLY in ${language} native script without formal greetings and avoid robotic connector words.` }];
 
-      const { text: initialDraft } = await generateText({
+      const { text: rawOutput } = await generateText({
         model: groq('llama-3.1-8b-instant'),
         temperature: 0.7,
         system: systemPrompt,
-        messages: draftMessages as any,
+        messages: finalMessages as any,
       });
 
-      // FIX: Non-English/Hindi scripts (Gujarati, Punjabi, Bengali, Tamil, Telugu,
-      // Kannada, Malayalam) पर छोटा 8b model अक्सर critic-JSON गलत बनाता है, जिससे
-      // critic हमेशा "reject" कर देता है और rewrite call हर बार trigger होकर
-      // latency बढ़ा देता है (और edge/short timeouts पर 504 आता था)।
-      // इसलिए अब critic सिर्फ इंग्लिश/हिंदी के लिए चलेगा; बाकी भाषाओं में सीधे draft ही final होगा —
-      // response fast भी रहेगा और गलत JSON की वजह से unnecessary rewrite भी नहीं होगा।
-      const runCritic = ['hindi', 'english'].includes(String(language).toLowerCase());
-
-      let finalDraft = initialDraft;
-
-      if (runCritic) {
-        const criticPrompt = isStockMode
-          ? `Check this draft. Does it stay bullish? Is it free of robotic fluff and polite greetings? Is it written STRICTLY in ${language} Native Script with no mixed languages or roman letters? Draft: "${initialDraft}"
-Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason written in ${language}"}.`
-          : `Check this draft. Does it strictly defend its stance? Did it avoid agreeing with the opponent? Did it avoid robotic greetings and repetitive words? Is it written STRICTLY in ${language} Native Script with no mixed languages or roman letters? Draft: "${initialDraft}"
-Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason written in ${language}"}.`;
-
-        const { text: criticOutput } = await generateText({
-          model: groq('llama-3.1-8b-instant'),
-          temperature: 0.1,
-          prompt: criticPrompt
-        });
-        const evaluation = safeJsonParse(criticOutput, { approved: true, feedback: 'Perfect' });
-
-        if (!evaluation.approved) {
-          const finalMessages = [
-            ...draftMessages,
-            { role: 'assistant', content: initialDraft },
-            { role: 'user', content: `CRITIC FEEDBACK: "${evaluation.feedback}". Fix the flaws, drop any robotic greetings or repetitive words, and provide a sharp response STRICTLY in ${language} Native Script.` },
-          ];
-
-          const { text: rewrittenDraft } = await generateText({
-            model: groq('llama-3.1-8b-instant'),
-            temperature: 0.7,
-            system: systemPrompt,
-            messages: finalMessages as any,
-          });
-          finalDraft = rewrittenDraft;
-        }
-      }
-
-      const cleanFinal = stripMetaCommentary(stripFakeCitations(finalDraft));
-      const chart = isStockMode ? null : await maybeGenerateChart(cleanFinal, language);
-      const output = chart ? `${cleanFinal}\n[UI_CHART]${JSON.stringify(chart)}[/UI_CHART]` : cleanFinal;
-      return toManualTextStream(output);
+      const cleanOutput = stripMetaCommentary(stripFakeCitations(rawOutput));
+      // NOTE: chart-detection LLM call हटा दिया गया है (हर turn 1 extra सीरियल call बचाने के लिए)।
+      // Free/Hobby plan पर latency priority है। Pro plan पर upgrade करने पर मैं इसे वापस जोड़ सकता हूँ।
+      return toManualTextStream(cleanOutput);
     }
 
     // ─────────────────────────────────────────────────────────────────
@@ -608,7 +413,7 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
     if (body.type === 'judge_critique') {
       const { history = [], mode = 'topic', language = 'Hindi' } = body;
       const biasNote = mode === 'personality'
-        ? ' Judge purely on logical strength and evidence — do not favor either the aggressive/data-driven style or the philosophical style.'
+        ? ' Judge purely on logical strength and evidence — do not favor either style.'
         : '';
       const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback, written STRICTLY in ${language.toUpperCase()} Native Script, under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
       const { text } = await generateText({
@@ -625,7 +430,7 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
     if (body.type === 'judge_verdict') {
       const { topic, history = [], mode = 'topic', language = 'Hindi' } = body;
       const biasNote = mode === 'personality'
-        ? '\nIMPORTANT: You must remain STRICTLY NEUTRAL between the Aggressive Data-Driven debater and the Philosophical debater. Score based ONLY on logical strength, evidence, and direct engagement with the opponent — never based on which communication style you personally find more persuasive.'
+        ? '\nIMPORTANT: Remain STRICTLY NEUTRAL between the Aggressive Data-Driven debater and the Philosophical debater. Score only on logical strength, evidence, and direct engagement.'
         : '';
 
       const judgePrompt = `Evaluate the debate on Topic: "${topic}"${biasNote}
@@ -679,32 +484,32 @@ Topic: "${topic}"
 Statement: "${text}"
 
 CRITICAL DEBATE RULES (AVOID FALSE POSITIVES):
-1. Counter-arguments are NOT fallacies: Questioning the opponent's claims, asking for data, or challenging their logic is a VALID DEBATE TACTIC. Do NOT flag it as "Off-Topic" or "Strawman".
-2. Citing sources (like Wikipedia, Journals) is NOT "Appeal to Authority". It is providing evidence. Do NOT penalize it.
-3. Rhetorical questions or pointing out contradictions is NOT a "False Dilemma".
+1. Counter-arguments are NOT fallacies.
+2. Citing sources is NOT "Appeal to Authority".
+3. Rhetorical questions are NOT a "False Dilemma".
 4. Only flag GENUINE, extreme fallacies: Ad Hominem (direct personal insults), Strawman (completely misrepresenting the opponent).
 5. If there is NO real logical fallacy, you MUST set "hasFallacy": false. DO NOT BE OVERLY SENSITIVE.
 
 Calculate 'Aggression Score' (0-100) and 'Logic Score' (0-100).
 
-Respond STRICTLY with JSON ONLY using this format:
-{"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation written STRICTLY in ${language} Native Script", "penalty": 0 (only if fallacy is true, max 15), "aggressionScore": 50, "logicScore": 80}`;
-      
-      const { text: result } = await generateText({ 
-        model: groq('llama-3.1-8b-instant'), 
+Respond STRICTLY with JSON ONLY:
+{"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation written STRICTLY in ${language} Native Script", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
+
+      const { text: result } = await generateText({
+        model: groq('llama-3.1-8b-instant'),
         temperature: 0.1,
-        prompt 
+        prompt
       });
-      
-      const parsed = safeJsonParse(result, { 
-        hasFallacy: false, 
-        fallacyName: null, 
+
+      const parsed = safeJsonParse(result, {
+        hasFallacy: false,
+        fallacyName: null,
         explanation: '',
         penalty: 0,
         aggressionScore: 50,
-        logicScore: 80 
+        logicScore: 80
       });
-      
+
       const finalParsed = {
         hasFallacy: parsed?.hasFallacy ?? false,
         fallacyName: parsed?.fallacyName ?? null,
@@ -713,18 +518,17 @@ Respond STRICTLY with JSON ONLY using this format:
         aggressionScore: parsed?.aggressionScore ?? 50,
         logicScore: parsed?.logicScore ?? 80
       };
-      
+
       return NextResponse.json(finalParsed);
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // 6. FACT CHECK
+    // 6. FACT CHECK — यहाँ भी candidate-extraction LLM call हटाई, direct query
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fact_check') {
       const { claim, language = 'Hindi' } = body;
       try {
-        const candidates = await extractSearchCandidates(claim, language);
-        const primaryQuery = candidates.length ? candidates[0] : claim;
+        const primaryQuery = quickSearchQuery(claim);
 
         const tavilyResult = await searchTavily(primaryQuery);
         if (tavilyResult && (tavilyResult.answer || tavilyResult.sources.length > 0)) {
@@ -737,16 +541,9 @@ Respond STRICTLY with JSON ONLY using this format:
           });
         }
 
-        let wikiData: { title: string; snippet: string; url: string | null } | null = null;
-        let lastTried = '';
-        for (const candidate of candidates) {
-          lastTried = candidate;
-          wikiData = await fetchWikiSnippet(candidate);
-          if (wikiData) break;
-        }
+        const wikiData = await fetchWikiSnippet(primaryQuery);
         if (!wikiData) {
-          const triedList = candidates.length ? candidates.join(', ') : lastTried;
-          return NextResponse.json({ found: false, message: `No relevant source found. (Searched: "${triedList}")` });
+          return NextResponse.json({ found: false, message: `No relevant source found. (Searched: "${primaryQuery}")` });
         }
         return NextResponse.json({
           found: true,
