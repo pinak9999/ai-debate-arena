@@ -436,41 +436,42 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
       if (speaker === 'opponent') {
         const opponentHistory = history.map((msg: { speaker: string; text: string }) => `[${msg.speaker}]: ${msg.text}`).join('\n');
 
+        // 🔥 FIX 1: Catch block added to Swarm Agents to prevent 500 error on rate limits
         const [dataAgentCall, logicAgentCall] = await Promise.all([
           isStockMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
                 prompt: `Identify ONE NEW fundamental risk opposing a bullish case for "${topic}". Do not repeat previous risks. 1-2 sentences, written STRICTLY in ${language} Native Script.`,
-              })
+              }).catch(() => ({ text: "General market risks apply." }))
             : isPersonalityMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
                 prompt: `Identify ONE ethical concern the proponent's argument on "${topic}" overlooks. 1-2 sentences, written STRICTLY in ${language} Native Script.`,
-              })
+              }).catch(() => ({ text: "Ethical concerns remain unresolved." }))
             : generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
                 prompt: `Find ONE factual counter-point to the proponent's claims on "${topic}":\n${opponentHistory}\nRespond STRICTLY in ${language} Native Script.`,
-              }),
+              }).catch(() => ({ text: "Factual inconsistencies exist in the argument." })),
           isStockMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
                 prompt: `Identify ONE NEW valuation/technical weakness in the bull's LATEST argument on "${topic}". Do not repeat previous weaknesses:\n${opponentHistory}\nRespond STRICTLY in ${language} Native Script.`,
-              })
+              }).catch(() => ({ text: "Valuation appears stretched." }))
             : isPersonalityMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
                 prompt: `Identify ONE historical/philosophical principle that challenges the proponent's claim on "${topic}":\n${opponentHistory}\nRespond STRICTLY in ${language} Native Script.`,
-              })
+              }).catch(() => ({ text: "Historical context tells a different story." }))
             : generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
                 prompt: `Identify the main logical flaw or weak assumption in the proponent's LATEST argument on "${topic}". Explain the flaw in 1-2 sentences, written STRICTLY in ${language} Native Script, WITHOUT using academic fallacy names:\n${opponentHistory}`,
-              }),
+              }).catch(() => ({ text: "The logic relies on a weak assumption." })),
         ]);
 
         const leaderSystemPrompt = isStockMode
@@ -694,7 +695,17 @@ Respond STRICTLY with JSON ONLY using this format:
         logicScore: 80 
       });
       
-      return NextResponse.json(parsed);
+      // 🔥 FIX 2: Ensure no undefined values crash the UI if the JSON parse is incomplete
+      const finalParsed = {
+        hasFallacy: parsed?.hasFallacy ?? false,
+        fallacyName: parsed?.fallacyName ?? null,
+        explanation: parsed?.explanation ?? '',
+        penalty: parsed?.penalty ?? 0,
+        aggressionScore: parsed?.aggressionScore ?? 50,
+        logicScore: parsed?.logicScore ?? 80
+      };
+      
+      return NextResponse.json(finalParsed);
     }
 
     // ─────────────────────────────────────────────────────────────────
