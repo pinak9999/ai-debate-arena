@@ -260,8 +260,6 @@ function isValidAudienceScore(value: any): value is AudienceScore {
 }
 
 // AUDIENCE-RESPONSIVE AI STRATEGY (RL PROMPTING)
-// इसे भी language-agnostic रखा है — यह सिर्फ ENGLISH में instruction देता है
-// (सिस्टम प्रॉम्प्ट का हिस्सा है, फाइनल आउटपुट अलग से langInstruction से लॉक होता है)
 function buildRLInstruction(
   audienceScore: unknown,
   round: number,
@@ -389,7 +387,6 @@ Use these EXACT numbers naturally in your argument.`
           : `Rely on strong logical deduction.`;
       }
 
-      // MULTI-LANGUAGE BAN RULE (formal connector words ban language-agnostic रखा है)
       const antiRepetitionRule = `
 CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 1. NEVER start your response with formal/polite greetings. Jump directly into your argument naturally.
@@ -399,8 +396,8 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 5. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", or "Opponent's logic". Just destroy their logic naturally.
       `.trim();
 
-      // STRICT LANGUAGE INSTRUCTION — यही असली fix है, यह हर system prompt के आखिर में जाता है
-      const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()}. Do not mix languages, do not switch to English or Hindi unless ${language.toUpperCase()} itself is English or Hindi. Every single word must be in ${language}.`;
+      // 🔥 MAIN FIX: STRICT NATIVE SCRIPT INSTRUCTION 🔥
+      const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY (e.g., Devanagari for Hindi, Gujarati script for Gujarati). DO NOT use Roman/English letters to write ${language.toUpperCase()}. Do not mix languages. Every single word must be authentically written in the native ${language} alphabet.`;
 
       let roundInstruction = '';
       if (round === 1) {
@@ -444,35 +441,35 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
-                prompt: `Identify ONE NEW fundamental risk opposing a bullish case for "${topic}". Do not repeat previous risks. 1-2 sentences, written STRICTLY in ${language}.`,
+                prompt: `Identify ONE NEW fundamental risk opposing a bullish case for "${topic}". Do not repeat previous risks. 1-2 sentences, written STRICTLY in ${language} Native Script.`,
               })
             : isPersonalityMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
-                prompt: `Identify ONE ethical concern the proponent's argument on "${topic}" overlooks. 1-2 sentences, written STRICTLY in ${language}.`,
+                prompt: `Identify ONE ethical concern the proponent's argument on "${topic}" overlooks. 1-2 sentences, written STRICTLY in ${language} Native Script.`,
               })
             : generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
-                prompt: `Find ONE factual counter-point to the proponent's claims on "${topic}":\n${opponentHistory}\nRespond STRICTLY in ${language}.`,
+                prompt: `Find ONE factual counter-point to the proponent's claims on "${topic}":\n${opponentHistory}\nRespond STRICTLY in ${language} Native Script.`,
               }),
           isStockMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
-                prompt: `Identify ONE NEW valuation/technical weakness in the bull's LATEST argument on "${topic}". Do not repeat previous weaknesses:\n${opponentHistory}\nRespond STRICTLY in ${language}.`,
+                prompt: `Identify ONE NEW valuation/technical weakness in the bull's LATEST argument on "${topic}". Do not repeat previous weaknesses:\n${opponentHistory}\nRespond STRICTLY in ${language} Native Script.`,
               })
             : isPersonalityMode
             ? generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
-                prompt: `Identify ONE historical/philosophical principle that challenges the proponent's claim on "${topic}":\n${opponentHistory}\nRespond STRICTLY in ${language}.`,
+                prompt: `Identify ONE historical/philosophical principle that challenges the proponent's claim on "${topic}":\n${opponentHistory}\nRespond STRICTLY in ${language} Native Script.`,
               })
             : generateText({
                 model: groq('llama-3.1-8b-instant'),
                 temperature: 0.6,
-                prompt: `Identify the main logical flaw or weak assumption in the proponent's LATEST argument on "${topic}". Explain the flaw in 1-2 sentences, written STRICTLY in ${language}, WITHOUT using academic fallacy names:\n${opponentHistory}`,
+                prompt: `Identify the main logical flaw or weak assumption in the proponent's LATEST argument on "${topic}". Explain the flaw in 1-2 sentences, written STRICTLY in ${language} Native Script, WITHOUT using academic fallacy names:\n${opponentHistory}`,
               }),
         ]);
 
@@ -511,7 +508,7 @@ ${langInstruction} Highly intellectual and sharp tone.
           model: groq('llama-3.1-8b-instant'),
           temperature: 0.7,
           system: leaderSystemPrompt,
-          messages: [...messages, { role: 'user', content: `Respond directly and STRICTLY in ${language}. Remember: Do NOT use formal greetings. AVOID repetitive robotic connector words.` }] as any,
+          messages: [...messages, { role: 'user', content: `Respond directly and STRICTLY in ${language} using native script. Remember: Do NOT use formal greetings. AVOID repetitive robotic connector words.` }] as any,
         });
 
         const cleanSwarm = stripMetaCommentary(stripFakeCitations(swarmRaw));
@@ -549,7 +546,7 @@ ${roundInstruction}
 ${langInstruction} Professional, persuasive.
         `.trim();
 
-      const draftMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly and STRICTLY in ${language} without formal greetings and avoid robotic connector words.` }];
+      const draftMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly and STRICTLY in ${language} native script without formal greetings and avoid robotic connector words.` }];
 
       const { text: initialDraft } = await generateText({
         model: groq('llama-3.1-8b-instant'),
@@ -559,9 +556,9 @@ ${langInstruction} Professional, persuasive.
       });
 
       const criticPrompt = isStockMode
-        ? `Check this draft. Does it stay bullish? Is it free of robotic fluff and polite greetings? Is it written STRICTLY in ${language} with no mixed languages? Draft: "${initialDraft}"
+        ? `Check this draft. Does it stay bullish? Is it free of robotic fluff and polite greetings? Is it written STRICTLY in ${language} Native Script with no mixed languages or roman letters? Draft: "${initialDraft}"
 Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason written in ${language}"}.`
-        : `Check this draft. Does it strictly defend its stance? Did it avoid agreeing with the opponent? Did it avoid robotic greetings and repetitive words? Is it written STRICTLY in ${language} with no mixed languages? Draft: "${initialDraft}"
+        : `Check this draft. Does it strictly defend its stance? Did it avoid agreeing with the opponent? Did it avoid robotic greetings and repetitive words? Is it written STRICTLY in ${language} Native Script with no mixed languages or roman letters? Draft: "${initialDraft}"
 Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason written in ${language}"}.`;
 
       const { text: criticOutput } = await generateText({
@@ -576,7 +573,7 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
         const finalMessages = [
           ...draftMessages,
           { role: 'assistant', content: initialDraft },
-          { role: 'user', content: `CRITIC FEEDBACK: "${evaluation.feedback}". Fix the flaws, drop any robotic greetings or repetitive words, and provide a sharp response STRICTLY in ${language}.` },
+          { role: 'user', content: `CRITIC FEEDBACK: "${evaluation.feedback}". Fix the flaws, drop any robotic greetings or repetitive words, and provide a sharp response STRICTLY in ${language} Native Script.` },
         ];
 
         const { text: rewrittenDraft } = await generateText({
@@ -602,7 +599,7 @@ Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "rea
       const biasNote = mode === 'personality'
         ? ' Judge purely on logical strength and evidence — do not favor either the aggressive/data-driven style or the philosophical style.'
         : '';
-      const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback, written STRICTLY in ${language.toUpperCase()}, under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
+      const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback, written STRICTLY in ${language.toUpperCase()} Native Script, under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
         temperature: 0.4,
@@ -627,7 +624,7 @@ CRITICAL RULE FOR SCORING:
 If any speaker has a "[SYSTEM NOTE: PENALTY APPLIED...]" tag in their transcript, you MUST strictly deduct that exact number of points from their final 'logic' and 'overall' score.
 
 Respond STRICTLY with JSON ONLY:
-{"winner":"proponent/opponent/tie","score_proponent":85,"score_opponent":80,"reasoning":"summary written STRICTLY in ${language} of why they won, explicitly mentioning any penalties if applied."}`;
+{"winner":"proponent/opponent/tie","score_proponent":85,"score_opponent":80,"reasoning":"summary written STRICTLY in ${language} native script of why they won, explicitly mentioning any penalties if applied."}`;
 
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
@@ -650,8 +647,6 @@ Respond STRICTLY with JSON ONLY:
     // 4. ROUND SCORE
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'round_score') {
-      // 🔥 FIX: language param जोड़ा गया (पहले missing था — consistency के लिए,
-      //   हालांकि यह सिर्फ नंबर लौटाता है, कोई प्रोज़ टेक्स्ट जनरेट नहीं करता)
       const { topic, history = [], round, language = 'Hindi' } = body;
       const prompt = `Topic: "${topic}" (Debate conducted in ${language}). Rate round ${round}.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n')}\nRespond STRICTLY with JSON ONLY: {"pro": 75, "opp": 80}`;
       const { text } = await generateText({
@@ -682,7 +677,7 @@ CRITICAL DEBATE RULES (AVOID FALSE POSITIVES):
 Calculate 'Aggression Score' (0-100) and 'Logic Score' (0-100).
 
 Respond STRICTLY with JSON ONLY using this format:
-{"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation written STRICTLY in ${language}", "penalty": 0 (only if fallacy is true, max 15), "aggressionScore": 50, "logicScore": 80}`;
+{"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation written STRICTLY in ${language} Native Script", "penalty": 0 (only if fallacy is true, max 15), "aggressionScore": 50, "logicScore": 80}`;
       
       const { text: result } = await generateText({ 
         model: groq('llama-3.1-8b-instant'), 

@@ -707,7 +707,8 @@ export function useDebate(): UseDebateReturn {
                   round,
                   totalRounds: config.totalRounds,
                   speaker,
-                  previousMessages: committedMessages.slice(0, -1),
+                  // 🔥 FIX 1: Filter out judge's critique from the history context
+                  previousMessages: committedMessages.filter((m) => m.speaker !== 'judge' && m.id !== messageId),
                   subjectMode,
                   stockContext: fetchedStockData,
                   audienceScore: audienceScoreRef.current, // यहाँ से लाइव स्कोर जा रहा है (हमेशा latest)
@@ -762,7 +763,14 @@ export function useDebate(): UseDebateReturn {
           }
 
           if (!signal.aborted) {
-            fetchRoundScore(config.topic, round, committedMessages, languageRef.current, signal);
+            // 🔥 FIX 2: Exclude judge from score evaluation
+            fetchRoundScore(
+              config.topic, 
+              round, 
+              committedMessages.filter((m) => m.speaker !== 'judge' && m.isComplete), 
+              languageRef.current, 
+              signal
+            );
           }
 
           if (round < config.totalRounds && !signal.aborted) {
@@ -774,7 +782,14 @@ export function useDebate(): UseDebateReturn {
             };
             setMessages((prev) => [...prev, critiquePlaceholder]);
 
-            const critiqueText = await fetchJudgeCritique(config.topic, committedMessages, subjectMode, languageRef.current, signal);
+            // 🔥 FIX 3: Exclude old judge critiques when generating a new critique
+            const critiqueText = await fetchJudgeCritique(
+              config.topic, 
+              committedMessages.filter((m) => m.speaker !== 'judge' && m.isComplete), 
+              subjectMode, 
+              languageRef.current, 
+              signal
+            );
             const completedCritique = { ...critiquePlaceholder, text: critiqueText, isComplete: true };
 
             committedMessages.push(completedCritique);
@@ -793,7 +808,14 @@ export function useDebate(): UseDebateReturn {
         if (!signal.aborted) {
           setStatus('judging');
           setCurrentSpeaker(null);
-          const verdict = await fetchJudgeVerdict(config.topic, committedMessages, subjectMode, languageRef.current, signal);
+          // 🔥 FIX 4: Exclude judge critiques from final verdict context
+          const verdict = await fetchJudgeVerdict(
+            config.topic, 
+            committedMessages.filter((m) => m.speaker !== 'judge' && m.isComplete), 
+            subjectMode, 
+            languageRef.current, 
+            signal
+          );
           setScores(verdict);
           setStatus('finished');
         }
