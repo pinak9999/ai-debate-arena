@@ -7,17 +7,24 @@ export type SpeakerType = 'proponent' | 'opponent' | 'judge';
 interface QueueItem {
   text: string;
   speaker: SpeakerType;
-  language: string; // 🔥 मल्टी-लैंग्वेज सपोर्ट के लिए
+  language: string;
   resolve: () => void;
 }
 
-// ─── लैंग्वेज कोड मैपर ───
+// FIX: पहले सिर्फ 5 भाषाएँ mapped थीं (Hindi/English/Gujarati/Marathi/Punjabi),
+// बाकी सब (Bengali, Tamil, Telugu, Kannada, Malayalam) default में जाकर
+// चुपचाप hi-IN बन जाती थीं। अब सभी 10 सपोर्टेड भाषाओं के सही BCP-47 codes हैं।
 const getLangCode = (langName: string = 'Hindi') => {
-  switch(langName.toLowerCase()) {
-    case 'english': return 'en-IN'; // या 'en-US'
-    case 'gujarati': return 'gu-IN';
-    case 'marathi': return 'mr-IN';
-    case 'punjabi': return 'pa-IN';
+  switch (langName.toLowerCase()) {
+    case 'english':   return 'en-IN';
+    case 'gujarati':  return 'gu-IN';
+    case 'marathi':   return 'mr-IN';
+    case 'punjabi':   return 'pa-IN';
+    case 'bengali':   return 'bn-IN';
+    case 'tamil':     return 'ta-IN';
+    case 'telugu':    return 'te-IN';
+    case 'kannada':   return 'kn-IN';
+    case 'malayalam': return 'ml-IN';
     case 'hindi':
     default: return 'hi-IN';
   }
@@ -26,20 +33,17 @@ const getLangCode = (langName: string = 'Hindi') => {
 export function useSpeech() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  
+
   const queueRef = useRef<QueueItem[]>([]);
   const processingRef = useRef(false);
-  
-  // ElevenLabs के ऑडियो के लिए
+
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
-  
-  // Native TTS (Fallback) के लिए
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   const processQueue = useCallback(async () => {
     if (processingRef.current) return;
     const item = queueRef.current.shift();
-    
+
     if (!item) {
       setIsSpeaking(false);
       return;
@@ -48,16 +52,13 @@ export function useSpeech() {
     processingRef.current = true;
     setIsSpeaking(true);
 
-    // 🟢 Robust Native TTS Fallback Function (Multi-Language)
     const playNativeTTS = () => {
-      // 1. Markdown और स्पेशल कैरेक्टर्स को हटाएं ताकि ब्राउज़र की आवाज़ अटके नहीं
       const cleanText = item.text.replace(/[*#_`~[\]]/g, '').trim();
 
-      // 2. टेक्स्ट को पूर्णविराम या प्रश्नचिह्न से छोटे हिस्सों में तोड़ें
       const chunks = (cleanText.match(/[^।!?.\n]+[।!?.\n]*/g) || [cleanText])
-                      .map(c => c.trim())
-                      .filter(c => c.length > 0);
-      
+        .map(c => c.trim())
+        .filter(c => c.length > 0);
+
       let currentChunk = 0;
       window.speechSynthesis.cancel();
 
@@ -65,56 +66,55 @@ export function useSpeech() {
         if (currentChunk >= chunks.length || isMuted) {
           processingRef.current = false;
           item.resolve();
-          processQueue(); // अगला टर्न चलाएं
+          processQueue();
           return;
         }
 
         const utterance = new SpeechSynthesisUtterance(chunks[currentChunk]);
-        currentUtteranceRef.current = utterance; // Garbage Collection से बचाने के लिए
-        
-        // 🔥 डायनामिक लैंग्वेज सेट करें
+        currentUtteranceRef.current = utterance;
+
         const targetLangCode = getLangCode(item.language);
         utterance.lang = targetLangCode;
-        
-        // आवाज़ का लहज़ा (Pitch)
+
         utterance.pitch = item.speaker === 'opponent' ? 0.8 : item.speaker === 'judge' ? 0.9 : 1.1;
 
-        // 🔥 Browser Voice Load Fix: सही भाषा की आवाज़ ढूंढें
         const setVoiceAndSpeak = () => {
           const voices = window.speechSynthesis.getVoices();
-          
-          // चुनी हुई भाषा से मैच करने वाली आवाज़ ढूंढें
+
           let selectedVoice = voices.find(v => v.lang === targetLangCode);
           if (!selectedVoice) {
-            // अगर सटीक मैच न मिले, तो उस भाषा के परिवार की कोई भी आवाज़ ढूंढें
             selectedVoice = voices.find(v => v.lang.includes(targetLangCode.split('-')[0]));
           }
-          
+
           if (selectedVoice) {
             utterance.voice = selectedVoice;
+          } else {
+            // FIX: अगर device पर उस भाषा की voice ही install नहीं है (जैसे Kannada/Malayalam
+            // अक्सर Windows/Chrome पर missing होती हैं), तो पुरानी code silently गलत भाषा में
+            // बोल देता था। अब console warning देंगे ताकि debugging आसान हो — TTS फिर भी
+            // चलेगी (browser अपनी default voice से try करेगा) बजाय हैंग होने के।
+            console.warn(`No native voice found for lang "${targetLangCode}". Falling back to browser default voice.`);
           }
-          
+
           utterance.onend = () => {
             currentChunk++;
             speakNext();
           };
-          
+
           utterance.onerror = (e) => {
             console.warn(`Native TTS Error on chunk ${currentChunk}:`, e);
             currentChunk++;
             speakNext();
           };
 
-          // क्रोम बग फिक्स: कभी-कभी TTS पॉज़ रह जाता है, उसे रिज़्यूम करें
           window.speechSynthesis.resume();
           window.speechSynthesis.speak(utterance);
         };
 
-        // अगर ब्राउज़र में आवाज़ें लोड नहीं हुई हैं, तो इंतज़ार करें
         if (window.speechSynthesis.getVoices().length === 0) {
           window.speechSynthesis.onvoiceschanged = () => {
             setVoiceAndSpeak();
-            window.speechSynthesis.onvoiceschanged = null; // एक बार चलने के बाद हटा दें
+            window.speechSynthesis.onvoiceschanged = null;
           };
         } else {
           setVoiceAndSpeak();
@@ -125,25 +125,22 @@ export function useSpeech() {
     };
 
     try {
-      // 1. Backend से ElevenLabs API Call (भाषा का डेटा भी भेज रहे हैं)
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-          text: item.text, 
+        body: JSON.stringify({
+          text: item.text,
           speaker: item.speaker,
-          language: item.language // 🔥 Backend को भी भाषा का पता रहे
+          language: item.language,
         }),
       });
 
-      // 🚨 अगर ElevenLabs का कोटा खत्म है या सर्वर एरर है
       if (!res.ok) {
         console.warn('ElevenLabs API failed, switching to Native TTS...');
-        playNativeTTS(); // Fallback ट्रिगर करें
+        playNativeTTS();
         return;
       }
 
-      // अगर API सक्सेस है तो ElevenLabs का ऑडियो प्ले करें
       const blob = await res.blob();
       const audioUrl = URL.createObjectURL(blob);
       const audio = new Audio(audioUrl);
@@ -161,22 +158,29 @@ export function useSpeech() {
         console.warn('Audio play error, switching to Native TTS...');
         URL.revokeObjectURL(audioUrl);
         currentAudioRef.current = null;
-        playNativeTTS(); // प्लेबैक में दिक्कत आए तो भी Fallback चलाएं
+        playNativeTTS();
       };
 
       if (!isMuted) {
         await audio.play();
       } else {
-        audio.onended(new Event('ended'));
+        // FIX: पहले यहाँ `audio.onended(new Event('ended'))` लिखा था — ये गलत तरीका है,
+        // event handler को function की तरह call नहीं करते और इससे runtime error/silent
+        // hang हो सकता था जब muted state में queue आगे ही नहीं बढ़ती थी। अब सीधा resolve करके
+        // queue आगे बढ़ा रहे हैं जैसे बाकी जगह होता है।
+        URL.revokeObjectURL(audioUrl);
+        currentAudioRef.current = null;
+        processingRef.current = false;
+        item.resolve();
+        processQueue();
       }
 
     } catch (error) {
       console.error('TTS Fetch Error:', error);
-      playNativeTTS(); // नेटवर्क फेल होने पर भी Fallback चलेगा
+      playNativeTTS();
     }
   }, [isMuted]);
 
-  // 🔥 speak फंक्शन में language पैरामीटर जोड़ा गया
   const speak = useCallback((text: string, speaker: SpeakerType = 'proponent', language: string = 'Hindi'): Promise<void> => {
     return new Promise((resolve) => {
       if (isMuted || !text.trim()) {
@@ -217,7 +221,6 @@ export function useSpeech() {
     });
   }, []);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (currentAudioRef.current) currentAudioRef.current.pause();

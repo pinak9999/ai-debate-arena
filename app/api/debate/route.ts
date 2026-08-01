@@ -2,9 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
 import { createGroq } from '@ai-sdk/groq';
 
-// VERCEL TIMEOUT FIX: इसे Edge Runtime पर सेट करें ताकि 10 सेकंड में कनेक्शन न कटे
-export const runtime = 'edge';
-export const maxDuration = 60; // (ये Pro plan के लिए है, पर लिखे रहने दो)
+// FIX: Edge runtime हटाया — इसका hard timeout maxDuration को override कर देता था,
+// यही वजह थी कि Gujarati/Marathi/Punjabi जैसी भाषाओं में जहाँ ज़्यादा LLM calls chain
+// होते हैं (grounding + swarm agents + critic + rewrite), वहाँ 504 timeout आता था।
+// Node.js runtime पर maxDuration असल में respect होता है (Vercel Pro plan पर 60s तक).
+export const maxDuration = 60;
+
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
 });
@@ -85,7 +88,6 @@ async function fetchWikiSnippet(query: string): Promise<{ title: string; snippet
   }
 }
 
-// MULTI-LANGUAGE: extractSearchCandidates अब language को ध्यान में रखते हुए क्वेरी बनाता है
 async function extractSearchCandidates(text: string, language: string = 'Hindi'): Promise<string[]> {
   try {
     const { text: raw } = await generateText({
@@ -259,7 +261,6 @@ function isValidAudienceScore(value: any): value is AudienceScore {
   );
 }
 
-// AUDIENCE-RESPONSIVE AI STRATEGY (RL PROMPTING)
 function buildRLInstruction(
   audienceScore: unknown,
   round: number,
@@ -396,8 +397,7 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 5. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", or "Opponent's logic". Just destroy their logic naturally.
       `.trim();
 
-      // 🔥 MAIN FIX: STRICT NATIVE SCRIPT INSTRUCTION 🔥
-      const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY (e.g., Devanagari for Hindi, Gujarati script for Gujarati). DO NOT use Roman/English letters to write ${language.toUpperCase()}. Do not mix languages. Every single word must be authentically written in the native ${language} alphabet.`;
+      const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY (e.g., Devanagari for Hindi, Gujarati script for Gujarati, Gurmukhi for Punjabi, Bengali script for Bengali, Tamil script for Tamil, Telugu script for Telugu, Kannada script for Kannada, Malayalam script for Malayalam). DO NOT use Roman/English letters to write ${language.toUpperCase()}. Do not mix languages. Every single word must be authentically written in the native ${language} alphabet.`;
 
       let roundInstruction = '';
       if (round === 1) {
@@ -436,7 +436,6 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
       if (speaker === 'opponent') {
         const opponentHistory = history.map((msg: { speaker: string; text: string }) => `[${msg.speaker}]: ${msg.text}`).join('\n');
 
-        // 🔥 FIX 1: Catch block added to Swarm Agents to prevent 500 error on rate limits
         const [dataAgentCall, logicAgentCall] = await Promise.all([
           isStockMode
             ? generateText({
@@ -556,34 +555,45 @@ ${langInstruction} Professional, persuasive.
         messages: draftMessages as any,
       });
 
-      const criticPrompt = isStockMode
-        ? `Check this draft. Does it stay bullish? Is it free of robotic fluff and polite greetings? Is it written STRICTLY in ${language} Native Script with no mixed languages or roman letters? Draft: "${initialDraft}"
-Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason written in ${language}"}.`
-        : `Check this draft. Does it strictly defend its stance? Did it avoid agreeing with the opponent? Did it avoid robotic greetings and repetitive words? Is it written STRICTLY in ${language} Native Script with no mixed languages or roman letters? Draft: "${initialDraft}"
-Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason written in ${language}"}.`;
-
-      const { text: criticOutput } = await generateText({
-        model: groq('llama-3.1-8b-instant'),
-        temperature: 0.1,
-        prompt: criticPrompt
-      });
-      const evaluation = safeJsonParse(criticOutput, { approved: true, feedback: 'Perfect' });
+      // FIX: Non-English/Hindi scripts (Gujarati, Punjabi, Bengali, Tamil, Telugu,
+      // Kannada, Malayalam) पर छोटा 8b model अक्सर critic-JSON गलत बनाता है, जिससे
+      // critic हमेशा "reject" कर देता है और rewrite call हर बार trigger होकर
+      // latency बढ़ा देता है (और edge/short timeouts पर 504 आता था)।
+      // इसलिए अब critic सिर्फ इंग्लिश/हिंदी के लिए चलेगा; बाकी भाषाओं में सीधे draft ही final होगा —
+      // response fast भी रहेगा और गलत JSON की वजह से unnecessary rewrite भी नहीं होगा।
+      const runCritic = ['hindi', 'english'].includes(String(language).toLowerCase());
 
       let finalDraft = initialDraft;
-      if (!evaluation.approved) {
-        const finalMessages = [
-          ...draftMessages,
-          { role: 'assistant', content: initialDraft },
-          { role: 'user', content: `CRITIC FEEDBACK: "${evaluation.feedback}". Fix the flaws, drop any robotic greetings or repetitive words, and provide a sharp response STRICTLY in ${language} Native Script.` },
-        ];
 
-        const { text: rewrittenDraft } = await generateText({
+      if (runCritic) {
+        const criticPrompt = isStockMode
+          ? `Check this draft. Does it stay bullish? Is it free of robotic fluff and polite greetings? Is it written STRICTLY in ${language} Native Script with no mixed languages or roman letters? Draft: "${initialDraft}"
+Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason written in ${language}"}.`
+          : `Check this draft. Does it strictly defend its stance? Did it avoid agreeing with the opponent? Did it avoid robotic greetings and repetitive words? Is it written STRICTLY in ${language} Native Script with no mixed languages or roman letters? Draft: "${initialDraft}"
+Respond STRICTLY with valid JSON ONLY: {"approved": true/false, "feedback": "reason written in ${language}"}.`;
+
+        const { text: criticOutput } = await generateText({
           model: groq('llama-3.1-8b-instant'),
-          temperature: 0.7,
-          system: systemPrompt,
-          messages: finalMessages as any,
+          temperature: 0.1,
+          prompt: criticPrompt
         });
-        finalDraft = rewrittenDraft;
+        const evaluation = safeJsonParse(criticOutput, { approved: true, feedback: 'Perfect' });
+
+        if (!evaluation.approved) {
+          const finalMessages = [
+            ...draftMessages,
+            { role: 'assistant', content: initialDraft },
+            { role: 'user', content: `CRITIC FEEDBACK: "${evaluation.feedback}". Fix the flaws, drop any robotic greetings or repetitive words, and provide a sharp response STRICTLY in ${language} Native Script.` },
+          ];
+
+          const { text: rewrittenDraft } = await generateText({
+            model: groq('llama-3.1-8b-instant'),
+            temperature: 0.7,
+            system: systemPrompt,
+            messages: finalMessages as any,
+          });
+          finalDraft = rewrittenDraft;
+        }
       }
 
       const cleanFinal = stripMetaCommentary(stripFakeCitations(finalDraft));
@@ -660,7 +670,7 @@ Respond STRICTLY with JSON ONLY:
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // 5. FALLACY & TONE CHECK (SMART UPGRADE)
+    // 5. FALLACY & TONE CHECK
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text, topic, language = 'Hindi' } = body;
@@ -695,7 +705,6 @@ Respond STRICTLY with JSON ONLY using this format:
         logicScore: 80 
       });
       
-      // 🔥 FIX 2: Ensure no undefined values crash the UI if the JSON parse is incomplete
       const finalParsed = {
         hasFallacy: parsed?.hasFallacy ?? false,
         fallacyName: parsed?.fallacyName ?? null,

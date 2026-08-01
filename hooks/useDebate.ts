@@ -746,7 +746,8 @@ export function useDebate(): UseDebateReturn {
             }
 
             if (!signal.aborted) {
-              const speakPromise = speak(cleanText, speaker);
+              // 🔥 MODIFIED: Passed languageRef.current to speak function
+              const speakPromise = speak(cleanText, speaker, languageRef.current);
               const abortPromise = new Promise<void>((resolve) => {
                 signal.addEventListener('abort', () => resolve(), { once: true });
               });
@@ -796,7 +797,8 @@ export function useDebate(): UseDebateReturn {
             setMessages((prev) => prev.map((m) => (m.id === critiqueId ? completedCritique : m)));
 
             if (!signal.aborted) {
-              const speakPromise = speak(critiqueText, 'judge' as any);
+              // 🔥 MODIFIED: Passed languageRef.current to speak function
+              const speakPromise = speak(critiqueText, 'judge' as any, languageRef.current);
               const abortPromise = new Promise<void>((resolve) => {
                 signal.addEventListener('abort', () => resolve(), { once: true });
               });
