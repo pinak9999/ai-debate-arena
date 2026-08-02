@@ -557,7 +557,7 @@ export function useDebate(): UseDebateReturn {
     [addLog]
   );
 
-  const waitForPlayerInput = useCallback((): Promise<string> => {
+  const waitForPlayerInput = useCallback(): Promise<string> => {
     setWaitingForPlayer(true);
     addLog(`[System] Awaiting human input...`, 'system');
     return new Promise<string>((resolve) => {
@@ -630,6 +630,8 @@ export function useDebate(): UseDebateReturn {
       supabase.removeAllChannels();
       addLog(`[System] Establishing Realtime connection for Live Class Voting...`, 'system');
 
+      // 🔥 FIX: Live voting listener ab table se sabhi votes mangwata hai
+      // taaki activeRound ya filter mismatch ke kaaran 50/50 na atke rahe
       const voteChannel = supabase
         .channel('realtime_votes')
         .on(
@@ -639,8 +641,7 @@ export function useDebate(): UseDebateReturn {
             const activeRound = currentRoundRef.current;
             const { data, error: voteError } = await supabase
               .from('votes')
-              .select('side')
-              .eq('round_number', activeRound);
+              .select('side, round_number');
 
             if (voteError) {
               addLog(`[Live Vote] Error fetching votes: ${voteError.message}`, 'system');
@@ -648,8 +649,11 @@ export function useDebate(): UseDebateReturn {
             }
 
             if (data) {
-              const total = data.length;
-              const proVotes = data.filter((v) => v.side === 'proponent').length;
+              // Current active round ke votes filter karein
+              const currentRoundVotes = data.filter((v) => Number(v.round_number) === Number(activeRound));
+              
+              const total = currentRoundVotes.length;
+              const proVotes = currentRoundVotes.filter((v) => v.side === 'proponent').length;
               const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
               const oppPercentage = 100 - proPercentage;
 
