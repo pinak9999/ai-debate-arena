@@ -282,14 +282,15 @@ export function useDebate(): UseDebateReturn {
         addLog(`[Live Vote] Poll error: ${voteError.message}`, 'system');
         return;
       }
-      if (!data || data.length === 0) return;
 
-      const roundVotes = data.filter((v) => Number(v.round_number) === Number(activeRound));
-      const usingFallback = roundVotes.length === 0;
-      const effectiveVotes = usingFallback ? data : roundVotes;
-
-      const total = effectiveVotes.length;
-      const proVotes = effectiveVotes.filter((v) => v.side === 'proponent').length;
+      // 🔥 FIX: Ab "fallback to all rounds" hata diya — sirf CURRENT round ke
+      // votes hi count honge. Jab tak is round pe koi vote nahi padta, score
+      // 50/50 (dummy default) hi rahega. Pehla vote padte hi seedha usi vote ke
+      // hisaab se jump karega (e.g. 1 vote proponent ko = turant 100/0),
+      // kyunki purane/doosre round ke votes ab dilute nahi karenge.
+      const roundVotes = (data || []).filter((v) => Number(v.round_number) === Number(activeRound));
+      const total = roundVotes.length;
+      const proVotes = roundVotes.filter((v) => v.side === 'proponent').length;
       const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
       const oppPercentage = 100 - proPercentage;
 
@@ -303,7 +304,7 @@ export function useDebate(): UseDebateReturn {
         setAudienceScore(nextScore);
         audienceScoreRef.current = nextScore;
         addLog(
-          `[Live Vote]${usingFallback ? ' (fallback: all rounds)' : ` Round ${activeRound}`}: ${proPercentage}% Pro / ${oppPercentage}% Opp (Total votes: ${total})`,
+          `[Live Vote] Round ${activeRound}: ${proPercentage}% Pro / ${oppPercentage}% Opp (Total votes: ${total})`,
           'system'
         );
       }
