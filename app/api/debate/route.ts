@@ -50,9 +50,7 @@ function toManualTextStream(text: string): Response {
   });
 }
 
-// FIX: text से आखिरी 6-8 meaningful words निकालने का हल्का, LLM-free तरीका —
-// पहले इसके लिए एक पूरी अलग generateText call (extractSearchCandidates) लगती थी,
-// जो हर turn में 1 extra सीरियल LLM call जोड़ देती थी। अब बिना LLM के सीधा search query बना रहे हैं।
+// FIX: text से आखिरी 6-8 meaningful words निकालने का हल्का, LLM-free तरीका
 function quickSearchQuery(text: string): string {
   return text
     .replace(/[।!?,.\n]/g, ' ')
@@ -63,7 +61,7 @@ function quickSearchQuery(text: string): string {
     .trim();
 }
 
-// ─── WIKIPEDIA GROUNDING (RAG) — Topic Mode, अब बिना LLM candidate-extraction के ───
+// ─── WIKIPEDIA GROUNDING (RAG) — Topic Mode ───
 
 async function searchWiki(lang: 'hi' | 'en', q: string) {
   try {
@@ -119,7 +117,7 @@ async function searchTavily(query: string): Promise<{ answer: string | null; sou
   if (!apiKey || !query?.trim()) return null;
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000); // FIX: hard cap so it never eats the whole 10s budget alone
+    const timeout = setTimeout(() => controller.abort(), 4000);
     const res = await fetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -266,7 +264,7 @@ export async function POST(req: NextRequest) {
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // 1. DEBATE TURN — अब हर turn में सिर्फ 1 सीरियल LLM call (+ optional parallel-free grounding fetch)
+    // 1. DEBATE TURN
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'debate_turn') {
       const { topic, round, totalRounds, speaker, history = [], mode = 'topic', stockContext, audienceScore, language = 'Hindi' } = body;
@@ -281,7 +279,6 @@ export async function POST(req: NextRequest) {
         content: msg.text,
       }));
 
-      // ── Grounding (कोई LLM call नहीं, सिर्फ network fetch — parallel/fast) ──
       let groundingBlock = '';
       if (isStockMode) {
         groundingBlock = stockContext
@@ -306,13 +303,15 @@ Use these EXACT numbers naturally in your argument.`
           : `Rely on strong logical deduction.`;
       }
 
+      // FIX: बेतुके उदाहरणों (जैसे Mental Health / BPD) पर सख्त पाबंदी और कड़े डिबेट नियम
       const antiRepetitionRule = `
 CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 1. NEVER start your response with formal/polite greetings. Jump directly into your argument naturally.
 2. NEVER CONCEDE. Never adopt the opponent's conclusion. You must fiercely defend your stance.
 3. BAN ON ROBOTIC CONNECTORS: Do NOT repeatedly use formal connector words (e.g. "Furthermore", "Moreover", or their equivalents in ${language}). Use natural, sharp, aggressive transitions like a real human college debater speaking ${language}.
 4. STRICT ANTI-REPETITION: DO NOT copy-paste sentences or exact phrases from previous rounds. Bring a NEW logical angle, NEW risk, or NEW metric every round.
-5. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", or "Opponent's logic". Just destroy their logic naturally.
+5. STRICT BAN ON BIZARRE ANALOGIES: Do NOT use mental health disorders (like Borderline Personality Disorder, depression, self-harm) as examples to explain emotional depth or creativity. Use real-world artistic, economic, or technological examples.
+6. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", or "Opponent's logic". Just destroy their logic naturally.
       `.trim();
 
       const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY (e.g., Devanagari for Hindi, Gujarati script for Gujarati, Gurmukhi for Punjabi, Bengali script for Bengali, Tamil script for Tamil, Telugu script for Telugu, Kannada script for Kannada, Malayalam script for Malayalam). DO NOT use Roman/English letters. Do not mix languages. Every single word must be authentically written in the native ${language} alphabet.`;
@@ -350,10 +349,6 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 
       const rlInstruction = buildRLInstruction(audienceScore, round, speaker);
 
-      // FIX: पहले opponent के लिए 2 parallel sub-agent LLM calls + 1 leader call चलते थे
-      // (network round-trip काफी बढ़ जाता था, खासकर धीमी/कम-resource भाषाओं में)।
-      // अब सीधा एक ही call में दोनों निर्देश prompt में समाहित कर दिए — output quality लगभग same रहती है
-      // पर latency एक-तिहाई रह जाती है।
       const opponentExtraInstruction = isStockMode
         ? `As the BEAR, identify ONE fresh fundamental/valuation risk not mentioned before, and weave it naturally into your argument.`
         : isPersonalityMode
@@ -402,8 +397,6 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       });
 
       const cleanOutput = stripMetaCommentary(stripFakeCitations(rawOutput));
-      // NOTE: chart-detection LLM call हटा दिया गया है (हर turn 1 extra सीरियल call बचाने के लिए)।
-      // Free/Hobby plan पर latency priority है। Pro plan पर upgrade करने पर मैं इसे वापस जोड़ सकता हूँ।
       return toManualTextStream(cleanOutput);
     }
 
@@ -425,7 +418,7 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // 3. JUDGE VERDICT
+    // 3. JUDGE VERDICT — FIX: कंसिस्टेंट स्कोरिंग और असली मैथमेटिकल पेनल्टी
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'judge_verdict') {
       const { topic, history = [], mode = 'topic', language = 'Hindi' } = body;
@@ -433,27 +426,51 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         ? '\nIMPORTANT: Remain STRICTLY NEUTRAL between the Aggressive Data-Driven debater and the Philosophical debater. Score only on logical strength, evidence, and direct engagement.'
         : '';
 
+      // FIX: ट्रांसक्रिप्ट से ऑटोमैटिकली पेनल्टी पॉइंट्स गिनना ताकि वो हकीकत में कटें
+      let proPenalty = 0;
+      let oppPenalty = 0;
+      history.forEach((msg: { speaker: string; text: string }) => {
+        const penaltyMatch = msg.text.match(/\[SYSTEM NOTE: PENALTY APPLIED.*?(-\d+)/i);
+        if (penaltyMatch && penaltyMatch[1]) {
+          const deduction = Math.abs(parseInt(penaltyMatch[1], 10));
+          if (msg.speaker === 'proponent') proPenalty += deduction;
+          if (msg.speaker === 'opponent') oppPenalty += deduction;
+        }
+      });
+
       const judgePrompt = `Evaluate the debate on Topic: "${topic}"${biasNote}
 Transcript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}
 
-CRITICAL RULE FOR SCORING:
-If any speaker has a "[SYSTEM NOTE: PENALTY APPLIED...]" tag in their transcript, you MUST strictly deduct that exact number of points from their final 'logic' and 'overall' score.
+CRITICAL RULE FOR SCORING (CONSISTENCY WITH PREVIOUS ROUNDS):
+1. Score both debaters realistically out of 100 based on their logical arguments, evidence, and rebuttals.
+2. DO NOT artificially jump scores. If a debater was trailing in the live rounds, they should only win if their closing round was exceptionally superior.
+3. Penalties: If any debater used logical fallacies (Appeal to Fear/Emotion), deduct points accordingly.
 
 Respond STRICTLY with JSON ONLY:
-{"winner":"proponent/opponent/tie","score_proponent":85,"score_opponent":80,"reasoning":"summary written STRICTLY in ${language} native script of why they won, explicitly mentioning any penalties if applied."}`;
+{"winner":"proponent/opponent/tie","score_proponent":80,"score_opponent":78,"reasoning":"summary written STRICTLY in ${language} native script of why they won, explicitly mentioning any penalties or fallacies."}`;
 
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
         temperature: 0.3,
         prompt: judgePrompt
       });
-      const object = safeJsonParse(text, { winner: 'tie', score_proponent: 50, score_opponent: 50, reasoning: 'The debate was a tie.' });
+      const object = safeJsonParse(text, { winner: 'tie', score_proponent: 75, score_opponent: 75, reasoning: 'The debate was a tie.' });
+
+      // FIX: हार्डकोड पेनल्टी माइनस करना ताकि UI में सही और कटा हुआ स्कोर दिखे
+      const finalProScore = Math.max(10, (object.score_proponent || 75) - proPenalty);
+      const finalOppScore = Math.max(10, (object.score_opponent || 75) - oppPenalty);
+      
+      let finalWinner = object.winner;
+      if (finalProScore > finalOppScore) finalWinner = 'proponent';
+      else if (finalOppScore > finalProScore) finalWinner = 'opponent';
+      else finalWinner = 'tie';
+
       return NextResponse.json({
         type: 'verdict',
         payload: {
-          proponent: { logic: object.score_proponent, creativity: object.score_proponent, persuasion: object.score_proponent, evidence: object.score_proponent, overall: object.score_proponent },
-          opponent: { logic: object.score_opponent, creativity: object.score_opponent, persuasion: object.score_opponent, evidence: object.score_opponent, overall: object.score_opponent },
-          winner: object.winner,
+          proponent: { logic: finalProScore, creativity: finalProScore, persuasion: finalProScore, evidence: finalProScore, overall: finalProScore },
+          opponent: { logic: finalOppScore, creativity: finalOppScore, persuasion: finalOppScore, evidence: finalOppScore, overall: finalOppScore },
+          winner: finalWinner,
           summary: stripFakeCitations(object.reasoning),
         },
       });
@@ -464,18 +481,18 @@ Respond STRICTLY with JSON ONLY:
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'round_score') {
       const { topic, history = [], round, language = 'Hindi' } = body;
-      const prompt = `Topic: "${topic}" (Debate conducted in ${language}). Rate round ${round}.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n')}\nRespond STRICTLY with JSON ONLY: {"pro": 75, "opp": 80}`;
+      const prompt = `Topic: "${topic}" (Debate conducted in ${language}). Rate round ${round} realistically between 60 and 90.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n')}\nRespond STRICTLY with JSON ONLY: {"pro": 75, "opp": 80}`;
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
         temperature: 0.1,
         prompt
       });
-      const parsed = safeJsonParse(text, { pro: 50, opp: 50 });
+      const parsed = safeJsonParse(text, { pro: 75, opp: 75 });
       return NextResponse.json(parsed);
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // 5. FALLACY & TONE CHECK
+    // 5. FALLACY & TONE CHECK — FIX: Appeal to Fear/Emotion को सही से पेनल्टी देना
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text, topic, language = 'Hindi' } = body;
@@ -483,12 +500,15 @@ Respond STRICTLY with JSON ONLY:
 Topic: "${topic}"
 Statement: "${text}"
 
-CRITICAL DEBATE RULES (AVOID FALSE POSITIVES):
+CRITICAL DEBATE RULES:
 1. Counter-arguments are NOT fallacies.
 2. Citing sources is NOT "Appeal to Authority".
-3. Rhetorical questions are NOT a "False Dilemma".
-4. Only flag GENUINE, extreme fallacies: Ad Hominem (direct personal insults), Strawman (completely misrepresenting the opponent).
-5. If there is NO real logical fallacy, you MUST set "hasFallacy": false. DO NOT BE OVERLY SENSITIVE.
+3. ONLY flag GENUINE fallacies:
+   - Ad Hominem (direct personal insults) -> Penalty: 10
+   - Strawman (misrepresenting opponent) -> Penalty: 8
+   - Appeal to Fear / Existential Threat (fear-mongering instead of logic) -> Penalty: 5
+   - Appeal to Emotion (using emotional/mental health extremes like BPD to replace logic) -> Penalty: 5
+4. If there is NO real logical fallacy, set "hasFallacy": false and "penalty": 0.
 
 Calculate 'Aggression Score' (0-100) and 'Logic Score' (0-100).
 
@@ -514,7 +534,7 @@ Respond STRICTLY with JSON ONLY:
         hasFallacy: parsed?.hasFallacy ?? false,
         fallacyName: parsed?.fallacyName ?? null,
         explanation: parsed?.explanation ?? '',
-        penalty: parsed?.penalty ?? 0,
+        penalty: parsed?.hasFallacy ? (parsed?.penalty || 5) : 0,
         aggressionScore: parsed?.aggressionScore ?? 50,
         logicScore: parsed?.logicScore ?? 80
       };
@@ -523,7 +543,7 @@ Respond STRICTLY with JSON ONLY:
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // 6. FACT CHECK — यहाँ भी candidate-extraction LLM call हटाई, direct query
+    // 6. FACT CHECK
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fact_check') {
       const { claim, language = 'Hindi' } = body;
