@@ -556,19 +556,18 @@ export function useDebate(): UseDebateReturn {
     },
     [addLog]
   );
-
-  const waitForPlayerInput = useCallback(): Promise<string> => {
+const waitForPlayerInput = useCallback((): Promise<string> => {
     setWaitingForPlayer(true);
     addLog(`[System] Awaiting human input...`, 'system');
-    return new Promise<string>((resolve) => {
-      playerInputResolverRef.current = (text: string) => {
+    // FIX: Arrow function को हटाकर normal 'function' लगा दिया
+    return new Promise<string>(function (resolve) {
+      playerInputResolverRef.current = function (text: string) {
         setWaitingForPlayer(false);
         addLog(`[System] Human input received. Transmitting to Opponent AI.`, 'system');
         resolve(text);
       };
     });
   }, [addLog]);
-
   const submitPlayerArgument = useCallback((text: string) => {
     if (!text.trim()) return;
     if (playerInputResolverRef.current) {
