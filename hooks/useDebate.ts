@@ -151,6 +151,7 @@ export interface UseDebateReturn {
 
 const API_ENDPOINT = '/api/debate';
 const INTER_TURN_DELAY_MS = 400;
+const VOTE_POLL_INTERVAL_MS = 2500;
 
 function generateId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
@@ -257,15 +258,87 @@ export function useDebate(): UseDebateReturn {
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingTextRef = useRef('');
 
+  // 🔥 FIX: Smart Polling ke liye interval ref — Realtime WebSocket fail/late ho
+  // to bhi ye har VOTE_POLL_INTERVAL_MS pe DB se fresh votes khींch layega.
+  const votePollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
   const { speak, stop: stopSpeech, isSpeaking, isMuted, toggleMute } = useSpeech();
 
   const addLog = useCallback((text: string, type: AgentLog['type'] = 'info') => {
     setAgentLogs((prev) => [...prev, { id: generateId(), timestamp: Date.now(), text, type }]);
   }, []);
 
+  // 🔥 FIX: "Smart Polling + All Round Fallback"
+  // 1. Pehle activeRound ke votes count karta hai.
+  // 2. Agar activeRound ke votes 0 hain lekin table mein total votes maujood hain,
+  //    to fallback karke saare votes (Total) count karke dikha deta hai —
+  //    isse progress bar kabhi bhi hamesha ke liye 50/50 pe atka nahi rahega.
+  const syncLiveVotes = useCallback(async () => {
+    const activeRound = currentRoundRef.current;
+    try {
+      const { data, error: voteError } = await supabase.from('votes').select('side, round_number');
+
+      if (voteError) {
+        addLog(`[Live Vote] Poll error: ${voteError.message}`, 'system');
+        return;
+      }
+      if (!data || data.length === 0) return;
+
+      const roundVotes = data.filter((v) => Number(v.round_number) === Number(activeRound));
+      const usingFallback = roundVotes.length === 0;
+      const effectiveVotes = usingFallback ? data : roundVotes;
+
+      const total = effectiveVotes.length;
+      const proVotes = effectiveVotes.filter((v) => v.side === 'proponent').length;
+      const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
+      const oppPercentage = 100 - proPercentage;
+
+      const nextScore = { pro: proPercentage, opp: oppPercentage };
+
+      // Sirf tab update karo jab value badli ho — bekaar re-renders se bachne ke liye
+      if (
+        audienceScoreRef.current.pro !== nextScore.pro ||
+        audienceScoreRef.current.opp !== nextScore.opp
+      ) {
+        setAudienceScore(nextScore);
+        audienceScoreRef.current = nextScore;
+        addLog(
+          `[Live Vote]${usingFallback ? ' (fallback: all rounds)' : ` Round ${activeRound}`}: ${proPercentage}% Pro / ${oppPercentage}% Opp (Total votes: ${total})`,
+          'system'
+        );
+      }
+    } catch (e) {
+      // silent fail — agla poll try karega
+    }
+  }, [addLog]);
+
+  const stopVotePolling = useCallback(() => {
+    if (votePollIntervalRef.current) {
+      clearInterval(votePollIntervalRef.current);
+      votePollIntervalRef.current = null;
+    }
+  }, []);
+
+  const startVotePolling = useCallback(() => {
+    stopVotePolling();
+    // pehla sync turant, phir har interval pe
+    void syncLiveVotes();
+    votePollIntervalRef.current = setInterval(() => {
+      void syncLiveVotes();
+    }, VOTE_POLL_INTERVAL_MS);
+  }, [stopVotePolling, syncLiveVotes]);
+
+  // Component unmount hone par polling zaroor band ho
+  useEffect(() => {
+    return () => {
+      stopVotePolling();
+    };
+  }, [stopVotePolling]);
+
   const resetDebate = useCallback(() => {
     abortControllerRef.current?.abort();
     stopSpeech();
+    stopVotePolling();
     supabase.removeAllChannels();
     setStatus('idle');
     setMessages([]);
@@ -290,7 +363,7 @@ export function useDebate(): UseDebateReturn {
     setStockLoading(false);
     playerInputResolverRef.current = null;
     streamingTextRef.current = '';
-  }, [stopSpeech]);
+  }, [stopSpeech, stopVotePolling]);
 
   const readTextStream = useCallback(
     async (response: Response, onChunk: (chunk: string) => void, signal: AbortSignal): Promise<string> => {
@@ -556,18 +629,19 @@ export function useDebate(): UseDebateReturn {
     },
     [addLog]
   );
-const waitForPlayerInput = useCallback((): Promise<string> => {
+
+  const waitForPlayerInput = useCallback((): Promise<string> => {
     setWaitingForPlayer(true);
     addLog(`[System] Awaiting human input...`, 'system');
-    // FIX: Arrow function को हटाकर normal 'function' लगा दिया
-    return new Promise<string>(function (resolve) {
-      playerInputResolverRef.current = function (text: string) {
+    return new Promise<string>((resolve) => {
+      playerInputResolverRef.current = (text: string) => {
         setWaitingForPlayer(false);
         addLog(`[System] Human input received. Transmitting to Opponent AI.`, 'system');
         resolve(text);
       };
     });
   }, [addLog]);
+
   const submitPlayerArgument = useCallback((text: string) => {
     if (!text.trim()) return;
     if (playerInputResolverRef.current) {
@@ -629,39 +703,17 @@ const waitForPlayerInput = useCallback((): Promise<string> => {
       supabase.removeAllChannels();
       addLog(`[System] Establishing Realtime connection for Live Class Voting...`, 'system');
 
-      // 🔥 FIX: Live voting listener ab table se sabhi votes mangwata hai
-      // taaki activeRound ya filter mismatch ke kaaran 50/50 na atke rahe
+      // Realtime listener — jab bhi naya vote insert ho, turant sync try karo.
+      // Lekin ismein calculation ka poora logic duplicate nahi karte —
+      // seedha syncLiveVotes() ko call karte hain (single source of truth),
+      // jisme already "All Round Fallback" bhi built-in hai.
       const voteChannel = supabase
         .channel('realtime_votes')
         .on(
           'postgres_changes',
           { event: 'INSERT', schema: 'public', table: 'votes' },
-          async () => {
-            const activeRound = currentRoundRef.current;
-            const { data, error: voteError } = await supabase
-              .from('votes')
-              .select('side, round_number');
-
-            if (voteError) {
-              addLog(`[Live Vote] Error fetching votes: ${voteError.message}`, 'system');
-              return;
-            }
-
-            if (data) {
-              // Current active round ke votes filter karein
-              const currentRoundVotes = data.filter((v) => Number(v.round_number) === Number(activeRound));
-              
-              const total = currentRoundVotes.length;
-              const proVotes = currentRoundVotes.filter((v) => v.side === 'proponent').length;
-              const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
-              const oppPercentage = 100 - proPercentage;
-
-              const nextScore = { pro: proPercentage, opp: oppPercentage };
-              setAudienceScore(nextScore);
-              audienceScoreRef.current = nextScore;
-
-              addLog(`[Live Vote] Round ${activeRound}: ${proPercentage}% Pro / ${oppPercentage}% Opp (Total votes: ${total})`, 'system');
-            }
+          () => {
+            void syncLiveVotes();
           }
         )
         .subscribe((subStatus) => {
@@ -671,6 +723,10 @@ const waitForPlayerInput = useCallback((): Promise<string> => {
             addLog(`[System] Live voting channel failed to connect: ${subStatus}`, 'system');
           }
         });
+
+      // 🔥 FIX: Smart Polling shuru — Realtime WebSocket kabhi miss/late ho
+      // to bhi har 2.5s me DB se fresh vote counts aa jaayenge.
+      startVotePolling();
 
       const committedMessages: DebateMessage[] = [];
       const speakerOrder = ['proponent', 'opponent'] as const;
@@ -827,12 +883,14 @@ const waitForPlayerInput = useCallback((): Promise<string> => {
         }
 
         supabase.removeChannel(voteChannel);
+        stopVotePolling();
       } catch (err) {
         if (signal.aborted) return;
         const msg = err instanceof Error ? err.message : 'An unexpected error occurred';
         setError(msg);
         setStatus('error');
         console.error('[useDebate] Fatal error:', err);
+        stopVotePolling();
       }
     },
     [
@@ -848,6 +906,9 @@ const waitForPlayerInput = useCallback((): Promise<string> => {
       stopSpeech,
       addLog,
       fetchStockData,
+      syncLiveVotes,
+      startVotePolling,
+      stopVotePolling,
     ]
   );
 
