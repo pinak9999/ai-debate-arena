@@ -195,6 +195,12 @@ function buildRLInstruction(
   return `[CRITICAL STRATEGY SHIFT — LIVE AUDIENCE FEEDBACK]: The vote is closely contested (Current score: ${myScore}%). Maintain composure, deliver a balanced, undeniable argument to break the tie.`;
 }
 
+// ─── SCORE CLAMP HELPER ───
+function clampScore(n: unknown, fallback: number, min = 10, max = 100): number {
+  const num = typeof n === 'number' && Number.isFinite(n) ? n : fallback;
+  return Math.max(min, Math.min(max, Math.round(num)));
+}
+
 // ─── API HANDLER ───
 
 export async function POST(req: NextRequest) {
@@ -418,7 +424,11 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // 3. JUDGE VERDICT — FIX: कंसिस्टेंट स्कोरिंग और असली मैथमेटिकल पेनल्टी
+    // 3. JUDGE VERDICT
+    // FIX #1: कंसिस्टेंट स्कोरिंग और असली मैथमेटिकल पेनल्टी (पहले से था)
+    // FIX #2 (NEW): अब LLM से हर category (logic/creativity/persuasion/evidence)
+    //   का ALAG-ALAG score माँगा जाता है — पहले सिर्फ 1 overall score को
+    //   4 बार copy कर दिया जाता था, इसलिए UI में सारी bars same दिखती थीं।
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'judge_verdict') {
       const { topic, history = [], mode = 'topic', language = 'Hindi' } = body;
@@ -438,82 +448,160 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         }
       });
 
-      const judgePrompt = `Evaluate the debate on Topic: "${topic}"${biasNote}
-Transcript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}
+      const judgePrompt = `You are a strict, expert debate judge. Evaluate the FULL debate on Topic: "${topic}"${biasNote}
 
-CRITICAL RULE FOR SCORING (CONSISTENCY WITH PREVIOUS ROUNDS):
-1. Score both debaters realistically out of 100 based on their logical arguments, evidence, and rebuttals.
-2. DO NOT artificially jump scores. If a debater was trailing in the live rounds, they should only win if their closing round was exceptionally superior.
-3. Penalties: If any debater used logical fallacies (Appeal to Fear/Emotion), deduct points accordingly.
+Transcript:
+${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}
 
-Respond STRICTLY with JSON ONLY:
-{"winner":"proponent/opponent/tie","score_proponent":80,"score_opponent":78,"reasoning":"summary written STRICTLY in ${language} native script of why they won, explicitly mentioning any penalties or fallacies."}`;
+Score EACH debater SEPARATELY across FOUR distinct categories, each out of 100. Do NOT give the same number to every category — differentiate based on what actually happened in the transcript:
+- "logic": strength and coherence of reasoning, validity of claims, absence of contradictions.
+- "creativity": originality of angles/examples, avoiding repetition round to round.
+- "persuasion": rhetorical force, confidence, how compelling the delivery was.
+- "evidence": use of concrete facts, data, or specific real-world examples (vague claims score lower here).
+
+RULES:
+1. Scores must reflect REAL differences between the two debaters — avoid defaulting to near-identical numbers unless performance was genuinely equal.
+2. DO NOT artificially inflate a closing round. If a debater was trailing, they should only overtake if their closing was exceptionally superior.
+3. If fallacies (Appeal to Fear/Emotion) were used, that should already reduce their own internal consistency — reflect it mainly in the "logic" category.
+
+Respond STRICTLY with JSON ONLY, no extra text:
+{
+  "winner": "proponent" | "opponent" | "tie",
+  "proponent": {"logic": 0, "creativity": 0, "persuasion": 0, "evidence": 0},
+  "opponent": {"logic": 0, "creativity": 0, "persuasion": 0, "evidence": 0},
+  "reasoning": "summary written STRICTLY in ${language} native script explaining the score differences and mentioning any penalties or fallacies."
+}`;
 
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
-        temperature: 0.3,
+        temperature: 0.4,
         prompt: judgePrompt
       });
-      const object = safeJsonParse(text, { winner: 'tie', score_proponent: 75, score_opponent: 75, reasoning: 'The debate was a tie.' });
 
-      // FIX: हार्डकोड पेनल्टी माइनस करना ताकि UI में सही और कटा हुआ स्कोर दिखे
-      const finalProScore = Math.max(10, (object.score_proponent || 75) - proPenalty);
-      const finalOppScore = Math.max(10, (object.score_opponent || 75) - oppPenalty);
-      
-      let finalWinner = object.winner;
-      if (finalProScore > finalOppScore) finalWinner = 'proponent';
-      else if (finalOppScore > finalProScore) finalWinner = 'opponent';
-      else finalWinner = 'tie';
+      const fallbackShape = {
+        winner: 'tie' as const,
+        proponent: { logic: 75, creativity: 75, persuasion: 75, evidence: 75 },
+        opponent: { logic: 75, creativity: 75, persuasion: 75, evidence: 75 },
+        reasoning: 'The debate was a tie.',
+      };
+      const object = safeJsonParse(text, fallbackShape);
+
+      // FIX: हर category को individually clamp करना, ताकि LLM की गलत/missing values भी safe रहें
+      const proLogic = clampScore(object?.proponent?.logic, 75);
+      const proCreativity = clampScore(object?.proponent?.creativity, 75);
+      const proPersuasion = clampScore(object?.proponent?.persuasion, 75);
+      const proEvidence = clampScore(object?.proponent?.evidence, 75);
+
+      const oppLogic = clampScore(object?.opponent?.logic, 75);
+      const oppCreativity = clampScore(object?.opponent?.creativity, 75);
+      const oppPersuasion = clampScore(object?.opponent?.persuasion, 75);
+      const oppEvidence = clampScore(object?.opponent?.evidence, 75);
+
+      // FIX: Hardcoded fallacy penalty ab सीधे "logic" category से कटती है (सही जगह
+      // पर, क्योंकि fallacy असल में logical flaw है) — फिर overall उसी penalized
+      // logic को शामिल करके average निकाला जाता है।
+      const proLogicPenalized = Math.max(10, proLogic - proPenalty);
+      const oppLogicPenalized = Math.max(10, oppLogic - oppPenalty);
+
+      const proOverall = Math.round((proLogicPenalized + proCreativity + proPersuasion + proEvidence) / 4);
+      const oppOverall = Math.round((oppLogicPenalized + oppCreativity + oppPersuasion + oppEvidence) / 4);
+
+      let finalWinner: 'proponent' | 'opponent' | 'tie' = 'tie';
+      if (proOverall > oppOverall) finalWinner = 'proponent';
+      else if (oppOverall > proOverall) finalWinner = 'opponent';
 
       return NextResponse.json({
         type: 'verdict',
         payload: {
-          proponent: { logic: finalProScore, creativity: finalProScore, persuasion: finalProScore, evidence: finalProScore, overall: finalProScore },
-          opponent: { logic: finalOppScore, creativity: finalOppScore, persuasion: finalOppScore, evidence: finalOppScore, overall: finalOppScore },
+          proponent: {
+            logic: proLogicPenalized,
+            creativity: proCreativity,
+            persuasion: proPersuasion,
+            evidence: proEvidence,
+            overall: proOverall,
+          },
+          opponent: {
+            logic: oppLogicPenalized,
+            creativity: oppCreativity,
+            persuasion: oppPersuasion,
+            evidence: oppEvidence,
+            overall: oppOverall,
+          },
           winner: finalWinner,
-          summary: stripFakeCitations(object.reasoning),
+          summary: stripFakeCitations(object.reasoning || fallbackShape.reasoning),
         },
       });
     }
 
     // ─────────────────────────────────────────────────────────────────
     // 4. ROUND SCORE
+    // FIX: पहले पूरी history (सारे rounds) भेजी जाती थी और सिर्फ कहा जाता था
+    //   "rate round X" — इससे LLM हर बार लगभग same generic number देता था
+    //   (screenshot में हर round पर Opponent:80 / Proponent:75 hardcoded जैसा
+    //   दिख रहा था)। अब सिर्फ USI round के messages भेजे जाते हैं, ताकि score
+    //   सच में उसी round के content पर based हो और round-to-round बदले।
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'round_score') {
       const { topic, history = [], round, language = 'Hindi' } = body;
-      const prompt = `Topic: "${topic}" (Debate conducted in ${language}). Rate round ${round} realistically between 60 and 90.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n')}\nRespond STRICTLY with JSON ONLY: {"pro": 75, "opp": 80}`;
+
+      const roundMessages = history.filter((msg: { round: number }) => Number(msg.round) === Number(round));
+      const transcriptForRound = roundMessages
+        .map((msg: { speaker: string; text: string }) => `${msg.speaker}: ${msg.text}`)
+        .join('\n\n');
+
+      const prompt = `You are scoring ONLY Round ${round} of a debate on "${topic}" (conducted in ${language}).
+
+Round ${round} statements:
+${transcriptForRound || '(No statements found for this round)'}
+
+Score each debater's performance in THIS ROUND ONLY, between 55 and 95. Base it strictly on: specific evidence/examples used, logical coherence, and strength of any rebuttal made THIS round. Do not default to a generic middle value — if one side clearly argued better in this specific round, reflect that gap in the numbers (a difference of at least 5-10 points is expected unless truly balanced).
+
+Respond STRICTLY with JSON ONLY: {"pro": <number>, "opp": <number>}`;
+
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
-        temperature: 0.1,
+        temperature: 0.5,
         prompt
       });
-      const parsed = safeJsonParse(text, { pro: 75, opp: 75 });
-      return NextResponse.json(parsed);
+      const parsed = safeJsonParse(text, { pro: 70, opp: 70 });
+      return NextResponse.json({
+        pro: clampScore(parsed.pro, 70, 30, 100),
+        opp: clampScore(parsed.opp, 70, 30, 100),
+      });
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // 5. FALLACY & TONE CHECK — FIX: Appeal to Fear/Emotion को सही से पेनल्टी देना
+    // 5. FALLACY & TONE CHECK
+    // FIX: पहले normal argumentative statements (जैसे "AI creativity replace
+    //   कर देगा") भी "Appeal to Fear" के नाम पर flag हो रही थीं। अब rules को
+    //   ज़्यादा strict/specific बनाया — सिर्फ genuinely manipulative,
+    //   catastrophic या alarmist भाषा को ही fallacy माना जाएगा, सामान्य
+    //   position/claim को नहीं। साथ ही explanation में exact फ़्रेज़ quote
+    //   करना ज़रूरी किया ताकि false-positive कम हों।
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text, topic, language = 'Hindi' } = body;
-      const prompt = `You are an expert, unbiased Debate Moderator. Analyze this statement (written in ${language}) for logical fallacies.
+      const prompt = `You are an expert, UNBIASED and CONSERVATIVE Debate Moderator. Analyze this statement (written in ${language}) for GENUINE logical fallacies ONLY.
 Topic: "${topic}"
 Statement: "${text}"
 
-CRITICAL DEBATE RULES:
-1. Counter-arguments are NOT fallacies.
-2. Citing sources is NOT "Appeal to Authority".
-3. ONLY flag GENUINE fallacies:
-   - Ad Hominem (direct personal insults) -> Penalty: 10
-   - Strawman (misrepresenting opponent) -> Penalty: 8
-   - Appeal to Fear / Existential Threat (fear-mongering instead of logic) -> Penalty: 5
-   - Appeal to Emotion (using emotional/mental health extremes like BPD to replace logic) -> Penalty: 5
-4. If there is NO real logical fallacy, set "hasFallacy": false and "penalty": 0.
+CRITICAL DEBATE RULES — READ CAREFULLY:
+1. A normal argumentative claim (e.g. "X will replace Y", "X is a risk to Y") is NOT a fallacy — it is a standard debate position, even if it sounds negative or concerning. DO NOT flag ordinary predictions or position statements.
+2. Counter-arguments and rebuttals are NOT fallacies.
+3. Citing sources or data is NOT "Appeal to Authority".
+4. Passionate or confident tone is NOT "Appeal to Emotion" — it must involve genuinely manipulative language.
+5. ONLY flag a GENUINE fallacy if the statement meets a HIGH bar:
+   - Ad Hominem (direct personal insult of the opponent, not their argument) -> Penalty: 10
+   - Strawman (blatantly misrepresenting what the opponent actually said) -> Penalty: 8
+   - Appeal to Fear / Existential Threat (uses exaggerated, catastrophic, alarmist language SPECIFICALLY to bypass logic — e.g. "humanity will be destroyed forever", "we will all suffer irreversibly" — NOT a normal risk claim) -> Penalty: 5
+   - Appeal to Emotion (explicitly substitutes emotional manipulation FOR logical reasoning, e.g. invoking extreme suffering with no supporting logic) -> Penalty: 5
+6. If in doubt, or if it's a normal (even strongly worded) debate argument, set "hasFallacy": false and "penalty": 0. False positives are worse than missing a borderline case.
+7. If "hasFallacy" is true, the "explanation" MUST quote the exact fallacious phrase (under 15 words) from the statement that justifies the flag.
 
-Calculate 'Aggression Score' (0-100) and 'Logic Score' (0-100).
+Calculate 'Aggression Score' (0-100) and 'Logic Score' (0-100) regardless of fallacy verdict.
 
 Respond STRICTLY with JSON ONLY:
-{"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation written STRICTLY in ${language} Native Script", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
+{"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation written STRICTLY in ${language} Native Script, quoting the exact phrase if hasFallacy is true", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
 
       const { text: result } = await generateText({
         model: groq('llama-3.1-8b-instant'),
@@ -532,11 +620,11 @@ Respond STRICTLY with JSON ONLY:
 
       const finalParsed = {
         hasFallacy: parsed?.hasFallacy ?? false,
-        fallacyName: parsed?.fallacyName ?? null,
+        fallacyName: parsed?.hasFallacy ? (parsed?.fallacyName ?? null) : null,
         explanation: parsed?.explanation ?? '',
-        penalty: parsed?.hasFallacy ? (parsed?.penalty || 5) : 0,
-        aggressionScore: parsed?.aggressionScore ?? 50,
-        logicScore: parsed?.logicScore ?? 80
+        penalty: parsed?.hasFallacy ? clampScore(parsed?.penalty || 5, 5, 3, 10) : 0,
+        aggressionScore: clampScore(parsed?.aggressionScore, 50, 0, 100),
+        logicScore: clampScore(parsed?.logicScore, 80, 0, 100),
       };
 
       return NextResponse.json(finalParsed);
