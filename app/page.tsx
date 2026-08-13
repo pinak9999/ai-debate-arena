@@ -1,201 +1,337 @@
 'use client';
 
-import { useState } from 'react';
-import { AnimatePresence, motion } from 'framer-motion';
-import { RotateCcw, AlertTriangle } from 'lucide-react';
-import HeroSection from '@/components/HeroSection';
-import DebateArena from '@/components/DebateArena';
-import JudgeVerdict from '@/components/JudgeVerdict';
-import ParticleBackground from '@/components/ParticleBackground';
-import { useDebate, DebateLanguage } from '@/hooks/useDebate'; 
+import { useState, useRef, useEffect, type KeyboardEvent } from 'react';
+import { motion, AnimatePresence, type Variants } from 'framer-motion';
+import { Zap, Brain, Swords, ChevronDown, TrendingUp, Target, Flame } from 'lucide-react';
 import { ModeToggle } from '@/components/ModeToggle';
+import { DebateLanguage } from '@/hooks/useDebate';
 
-export default function Home() {
-  const debate = useDebate();
-  
-  // 🔥 भाषा स्टेट
-  const [selectedLang, setSelectedLang] = useState<DebateLanguage>('Hindi');
+interface HeroSectionProps {
+  onStart: (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality') => void;
+  mode: 'spectator' | 'player';
+  setMode: (mode: 'spectator' | 'player') => void;
+  selectedLang: DebateLanguage;
+  setSelectedLang: (lang: DebateLanguage) => void;
+  disabled?: boolean;
+}
 
-  const handleStart = (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality') => {
-    // 🔥 यहाँ भाषा पास की जा रही है
-    debate.startDebate({ topic: input, totalRounds: rounds, subject, language: selectedLang });
+const EXAMPLES = {
+  topic: [
+    'AI will replace human creativity entirely',
+    'Universal Basic Income is net positive',
+    'Social media does more harm than good',
+    'Space colonisation should be humanity\'s top priority',
+    'Nuclear energy is key to solving climate change',
+  ],
+  stock: ['SUZLON.NS', 'TATAMOTORS.NS', 'RELIANCE.NS', 'IRFC.NS', 'INFY.NS', 'ZOMATO.NS'],
+  personality: [
+    'Should the death penalty be abolished worldwide?',
+    'Is capitalism the best economic system for humanity?',
+    'Should AI be allowed to make life-or-death medical decisions?',
+    'Is space exploration justified while poverty exists on Earth?',
+    'Should social media be banned for under-18s?',
+  ],
+};
+
+const TICKER_ITEMS = [
+  'Round-based scoring', 'Live AI judge', 'Elo-style ratings', 
+  'NSE stock debates', 'Multilingual support', 'Spectator & player modes', 'Real-time streaming responses'
+];
+
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: { opacity: 1, transition: { staggerChildren: 0.1, delayChildren: 0.1 } },
+  exit: { opacity: 0, scale: 0.96, transition: { duration: 0.35 } },
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 25 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.6, ease: [0.16, 1, 0.3, 1] } },
+};
+
+export default function HeroSection({ onStart, mode, setMode, selectedLang, setSelectedLang, disabled }: HeroSectionProps) {
+  const [subject, setSubject] = useState<'topic' | 'stock' | 'personality'>('topic');
+  const [topic, setTopic] = useState('');
+  const [rounds, setRounds] = useState(3);
+  const [launching, setLaunching] = useState(false);
+  const [mousePos, setMousePos] = useState({ x: -100, y: -100 });
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const isStock = subject === 'stock';
+  const isPersonality = subject === 'personality';
+  const examples = EXAMPLES[subject];
+
+  // Mouse spotlight tracker
+  useEffect(() => {
+    const handleMouseMove = (e: MouseEvent) => {
+      setMousePos({ x: e.clientX, y: e.clientY });
+    };
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => window.removeEventListener('mousemove', handleMouseMove);
+  }, []);
+
+  const handleStart = () => {
+    if (!topic.trim() || launching) return;
+    setLaunching(true);
+    setTimeout(() => onStart(topic.trim(), rounds, subject), 500);
   };
 
-  const showHero   = debate.status === 'idle';
-  const showArena  = debate.status !== 'idle';
-  const showVerdict = debate.status === 'finished' && !!debate.scores;
+  const handleKeyDown = (e: KeyboardEvent) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleStart();
+  };
+
+  const canStart = topic.trim().length > 0 && !launching;
+
+  // Theme accent configs
+  const accentColor = isStock ? '#22e0a0' : isPersonality ? '#f2b705' : '#3b7bff';
+  const accentDim = isStock ? '#22e0a033' : isPersonality ? '#f2b70533' : '#3b7bff33';
 
   return (
-    <main className="relative min-h-screen bg-cyber-dark overflow-x-hidden">
-      {/* ── Ambient layers ────────────────────────────────────────────── */}
-      <ParticleBackground />
+    <motion.div
+      className="relative min-h-screen w-full flex flex-col items-center justify-between px-4 pt-8 pb-6 z-10 overflow-hidden bg-[#08090c]"
+      variants={containerVariants}
+      initial="hidden"
+      animate="visible"
+      exit="exit"
+      style={{ '--accent': accentColor, '--accent-dim': accentDim } as any}
+    >
+      {/* ── Ambient Duel Backdrop & Scanlines ── */}
+      <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className="absolute -top-[20%] -left-[10%] w-[60%] h-[140%] filter blur-[90px] opacity-22 bg-[radial-gradient(circle_at_30%_30%,#3b7bff,transparent_70%)]" />
+        <div className="absolute -top-[20%] -right-[10%] w-[60%] h-[140%] filter blur-[90px] opacity-22 bg-[radial-gradient(circle_at_70%_60%,#ff3d5a,transparent_70%)]" />
+        <div className="absolute inset-0 opacity-[0.035] mix-blend-overlay bg-[url('data:image/svg+xml,%3Csvg%20xmlns=%22http://www.w3.org/2000/svg%22%20width=%22120%22%20height=%22120%22%3E%3Cfilter%20id=%22n%22%3E%3CfeTurbulence%20type=%22fractalNoise%22%20baseFrequency=%220.9%22%20numOctaves=%222%22%20stitchTiles=%22stitch%22/%3E%3C/filter%3E%3Crect%20width=%22100%25%22%20height=%22100%25%22%20filter=%22url(%23n)%22/%3E%3C/svg%3E')] pointer-events-none" />
+        <div className="absolute inset-0 opacity-25 pointer-events-none bg-[repeating-linear-gradient(to_bottom,transparent_0_3px,rgba(255,255,255,0.012)_3px_4px)]" />
+        <div 
+          className="fixed z-2 w-[520px] h-[520px] rounded-full pointer-events-none transition-opacity duration-300 hidden md:block"
+          style={{
+            background: 'radial-gradient(circle, rgba(255,255,255,0.06), transparent 70%)',
+            transform: 'translate(-50%, -50%)',
+            left: mousePos.x,
+            top: mousePos.y,
+          }}
+        />
+      </div>
 
-      {/* Subtle cyber grid */}
-      <div
-        className="fixed inset-0 pointer-events-none z-0 opacity-[0.28]"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px)
-          `,
-          backgroundSize: '48px 48px',
-        }}
-        aria-hidden="true"
-      />
+      <div className="w-full max-w-2xl flex flex-col items-center my-auto z-10 pt-4">
+        
+        {/* ── TOP CONTROLS: Game Mode & Language Selector ── */}
+        <motion.div variants={itemVariants} className="w-full flex flex-col sm:flex-row items-center justify-center gap-4 mb-6">
+          <div className="flex flex-col items-center">
+            <p className="text-gray-400 text-[10px] mb-1.5 uppercase tracking-widest font-bold">Select Game Mode</p>
+            <ModeToggle mode={mode} setMode={setMode} disabled={disabled} />
+          </div>
 
-      <div
-        className="fixed inset-0 pointer-events-none z-0"
-        style={{
-          background:
-            'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,212,255,0.008) 3px, rgba(0,212,255,0.008) 4px)',
-        }}
-        aria-hidden="true"
-      />
+          <div className="flex flex-col items-center">
+            <p className="text-gray-400 text-[10px] mb-1.5 uppercase tracking-widest font-bold">Select Language</p>
+            <select 
+              value={selectedLang} 
+              onChange={(e) => setSelectedLang(e.target.value as DebateLanguage)}
+              className="bg-black/40 border border-white/10 text-white text-xs uppercase tracking-widest px-5 py-2 rounded-full cursor-pointer hover:border-blue-500/50 transition-all outline-none"
+            >
+              <option value="English">English</option>
+              <option value="Hindi">Hindi (हिंदी)</option>
+              <option value="Marathi">Marathi (मराठी)</option>
+              <option value="Gujarati">Gujarati (ગુજરાती)</option>
+              <option value="Punjabi">Punjabi (ਪੰਜਾਬੀ)</option>
+              <option value="Bengali">Bengali (বাংলা)</option>
+              <option value="Tamil">Tamil (தமிழ்)</option>
+              <option value="Telugu">Telugu (తెలుగు)</option>
+              <option value="Kannada">Kannada (ಕನ್ನಡ)</option>
+              <option value="Malayalam">Malayalam (മലയാളം)</option>
+              <option value="French">French (Français)</option>
+              <option value="Spanish">Spanish (Español)</option>
+              <option value="German">German (Deutsch)</option>
+              <option value="Japanese">Japanese (日本語)</option>
+              <option value="Korean">Korean (한국어)</option>
+              <option value="Arabic">Arabic (العربية)</option>
+              <option value="Russian">Russian (Русский)</option>
+              <option value="Chinese">Chinese (中文)</option>
+            </select>
+          </div>
+        </motion.div>
 
-      {/* ── Pages ─────────────────────────────────────────────────────── */}
-      <AnimatePresence mode="wait">
-        {showHero && (
-          <motion.div
-            key="hero"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.3 } }}
-            className="flex flex-col items-center justify-center min-h-screen relative z-10"
+        {/* ── Eyebrow Badge ── */}
+        <motion.div variants={itemVariants} className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-white/10 bg-white/[0.04] backdrop-blur-md mb-5">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#22e0a0] shadow-[0_0_10px_#22e0a0] animate-pulse" />
+          <span className="font-mono text-[11px] tracking-[0.18em] uppercase text-[#9ba1ad]">
+            Live &nbsp;·&nbsp; AI vs AI &nbsp;·&nbsp; Real-Time Judging
+          </span>
+        </motion.div>
+
+        {/* ── Headline Title ── */}
+        <motion.div variants={itemVariants} className="text-center mb-5">
+          <h1 className="font-['Anton','Arial_Narrow',sans-serif] font-normal uppercase leading-[0.86] tracking-[0.01em] text-[clamp(48px,11vw,110px)]">
+            <span className="block text-[#eef0f3]">AI Debate</span>
+            <span className="block bg-gradient-to-r from-[#3b7bff] via-[#b06bff] to-[#ff3d5a] bg-clip-text text-transparent bg-[length:200%_100%] animate-[sheen_6s_ease-in-out_infinite]">
+              Arena
+            </span>
+          </h1>
+          <p className="mt-3 font-mono text-[11px] tracking-[0.22em] uppercase text-[#5b616e]">
+            <strong className="text-[#9ba1ad] font-semibold">Two Agents</strong>
+            <span className="mx-2 text-[#333844]">/</span>
+            <strong className="text-[#9ba1ad] font-semibold">Structured Rounds</strong>
+            <span className="mx-2 text-[#333844]">/</span>
+            <strong className="text-[#9ba1ad] font-semibold">Live Judge Score</strong>
+          </p>
+        </motion.div>
+
+        {/* ── Tale-of-the-tape Duel Emblem ── */}
+        <motion.div variants={itemVariants} className="flex items-center justify-center my-3 w-full">
+          <div className="flex flex-col items-center gap-1 w-[100px]">
+            <div className="w-[44px] h-[44px] rounded-full flex items-center justify-center font-['Anton'] text-lg border-2 border-[#3b7bff] text-[#3b7bff] shadow-[0_0_15px_rgba(59,123,255,0.3)]">A</div>
+            <span className="font-mono text-[9px] tracking-[0.14em] uppercase text-[#5b616e]">Agent <strong className="text-[#9ba1ad]">Blue</strong></span>
+          </div>
+          <div className="flex-1 h-[1px] bg-gradient-to-r from-transparent to-white/10" />
+          <div className="relative w-[48px] h-[48px] mx-[-4px] flex items-center justify-center flex-shrink-0">
+            <div className="absolute inset-0 rounded-full bg-[conic-gradient(from_0deg,#3b7bff,#f2b705,#ff3d5a,#f2b705,#3b7bff)] animate-[spin_5s_linear_infinite]" style={{ mask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))', WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 3px), #000 calc(100% - 3px))' }} />
+            <span className="relative font-['Anton'] text-sm text-[#eef0f3] bg-[#08090c] w-[38px] h-[38px] rounded-full flex items-center justify-center">VS</span>
+          </div>
+          <div className="flex-1 h-[1px] bg-gradient-to-l from-transparent to-white/10" />
+          <div className="flex flex-col items-center gap-1 w-[100px]">
+            <div className="w-[44px] h-[44px] rounded-full flex items-center justify-center font-['Anton'] text-lg border-2 border-[#ff3d5a] text-[#ff3d5a] shadow-[0_0_15px_rgba(255,61,90,0.3)]">B</div>
+            <span className="font-mono text-[9px] tracking-[0.14em] uppercase text-[#5b616e]">Agent <strong className="text-[#9ba1ad]">Red</strong></span>
+          </div>
+        </motion.div>
+
+        {/* ── Mode Selection Buttons ── */}
+        <motion.div variants={itemVariants} className="flex flex-wrap justify-center gap-2 my-4">
+          <button
+            onClick={() => { setSubject('topic'); setTopic(''); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full font-mono text-[10.5px] font-semibold tracking-[0.14em] uppercase border transition-all duration-200 cursor-pointer ${
+              subject === 'topic' ? 'text-[#eef0f3] border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] shadow-[0_0_18px_var(--accent-dim)]' : 'border-white/10 bg-white/[0.03] text-[#5b616e] hover:bg-white/[0.06] hover:text-[#9ba1ad]'
+            }`}
           >
-            {/* ── MODE & LANGUAGE SELECTOR ────────────────────────── */}
-            <div className="mb-8 flex flex-col items-center gap-6">
-              <div className="flex flex-col items-center">
-                <p className="text-gray-400 text-xs mb-3 uppercase tracking-widest font-bold">Select Game Mode</p>
-                <ModeToggle
-                  mode={debate.mode}
-                  setMode={debate.setMode}
-                  disabled={debate.status !== 'idle'}
-                />
-              </div>
+            <Target className="w-3.5 h-3.5 opacity-80" /> Topic Debate
+          </button>
+          <button
+            onClick={() => { setSubject('stock'); setTopic(''); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full font-mono text-[10.5px] font-semibold tracking-[0.14em] uppercase border transition-all duration-200 cursor-pointer ${
+              isStock ? 'text-[#eef0f3] border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] shadow-[0_0_18px_var(--accent-dim)]' : 'border-white/10 bg-white/[0.03] text-[#5b616e] hover:bg-white/[0.06] hover:text-[#9ba1ad]'
+            }`}
+          >
+            <TrendingUp className="w-3.5 h-3.5 opacity-80" /> Stock War-Room
+          </button>
+          <button
+            onClick={() => { setSubject('personality'); setTopic(''); }}
+            className={`flex items-center gap-2 px-4 py-2 rounded-full font-mono text-[10.5px] font-semibold tracking-[0.14em] uppercase border transition-all duration-200 cursor-pointer ${
+              isPersonality ? 'text-[#eef0f3] border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_14%,transparent)] shadow-[0_0_18px_var(--accent-dim)]' : 'border-white/10 bg-white/[0.03] text-[#5b616e] hover:bg-white/[0.06] hover:text-[#9ba1ad]'
+            }`}
+          >
+            <Flame className="w-3.5 h-3.5 opacity-80" /> Personality Clash
+          </button>
+        </motion.div>
 
-              {/* 🔥 अपडेटेड लैंग्वेज सेलेक्टर (All Supported Languages) */}
-              <div className="flex flex-col items-center">
-                 <p className="text-gray-400 text-xs mb-3 uppercase tracking-widest font-bold">Select Language</p>
-                 <select 
-                  value={selectedLang} 
-                  onChange={(e) => setSelectedLang(e.target.value as DebateLanguage)}
-                  className="bg-black/40 border border-white/10 text-white text-xs uppercase tracking-widest px-6 py-2 rounded-full cursor-pointer hover:border-blue-500/50 transition-all outline-none"
-                >
-                  <option value="English">English</option>
-                  <option value="Hindi">Hindi (हिंदी)</option>
-                  <option value="Marathi">Marathi (मराठी)</option>
-                  <option value="Gujarati">Gujarati (ગુજરાતી)</option>
-                  <option value="Punjabi">Punjabi (ਪੰਜਾਬੀ)</option>
-                  <option value="Bengali">Bengali (বাংলা)</option>
-                  <option value="Tamil">Tamil (தமிழ்)</option>
-                  <option value="Telugu">Telugu (తెలుగు)</option>
-                  <option value="Kannada">Kannada (ಕನ್ನಡ)</option>
-                  <option value="Malayalam">Malayalam (മലയാളം)</option>
-                  <option value="French">French (Français)</option>
-                  <option value="Spanish">Spanish (Español)</option>
-                  <option value="German">German (Deutsch)</option>
-                  <option value="Japanese">Japanese (日本語)</option>
-                  <option value="Korean">Korean (한국어)</option>
-                  <option value="Arabic">Arabic (العربية)</option>
-                  <option value="Russian">Russian (Русский)</option>
-                  <option value="Chinese">Chinese (中文)</option>
-                </select>
-              </div>
+        {/* ── Glassmorphism Input Card ── */}
+        <motion.div variants={itemVariants} className="w-full">
+          <div className="relative bg-gradient-to-b from-white/[0.05] to-white/[0.02] border border-white/10 rounded-[20px] p-6 md:p-7 backdrop-blur-xl shadow-[0_30px_80px_-30px_rgba(0,0,0,0.7)]">
+            
+            {/* Field Label */}
+            <div className="flex justify-between items-baseline mb-2">
+              <span className="font-mono text-[10px] font-semibold tracking-[0.16em] uppercase text-[#9ba1ad]">
+                {isStock ? '📈 Stock Ticker (NSE)' : isPersonality ? '🎭 Topic (Analyst vs Philosopher)' : 'Debate Topic'}
+              </span>
+              {!isStock && (
+                <span className="font-mono text-[9px] text-[#5b616e]">⌘ + ↵ to start · {topic.length} chars</span>
+              )}
             </div>
 
-            <HeroSection onStart={handleStart} />
-          </motion.div>
-        )}
-
-        {showArena && (
-          <motion.div
-            key="arena"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            transition={{ duration: 0.55 }}
-            className="min-h-screen"
-          >
-            <div className="flex items-center justify-between px-4 pt-5 pb-1 max-w-7xl mx-auto relative z-20">
-              <div>
-                <h1 className="font-orbitron font-black text-base text-white tracking-[0.18em] uppercase">
-                  {debate.subject === 'stock' ? 'Financial War-Room' : debate.subject === 'personality' ? 'Personality Clash Arena' : 'AI Debate Arena'}
-                </h1>
-                <p className="text-white/25 text-[10px] tracking-[0.25em] uppercase">
-                  {debate.status === 'judging' ? 'Evaluating…' : 'Live Session'} | Language: {debate.language}
-                </p>
-              </div>
-              <button
-                id="new-debate-btn"
-                onClick={debate.resetDebate}
-                className="flex items-center gap-2 px-4 py-2 rounded-xl border border-white/10 text-white/35 hover:text-white/70 hover:border-white/25 text-[10px] font-semibold tracking-wider transition-all duration-200 bg-white/[0.03] hover:bg-white/[0.07]"
-              >
-                <RotateCcw className="w-3 h-3" />
-                New Debate
-              </button>
+            {/* Input area */}
+            <div className="relative mb-4">
+              <textarea
+                ref={textareaRef}
+                value={topic}
+                onChange={(e) => setTopic(isStock ? e.target.value.toUpperCase() : e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder={isStock ? 'e.g. SUZLON.NS or RELIANCE.NS' : isPersonality ? 'Enter a philosophical or ethical topic…' : 'Enter a controversial statement…'}
+                rows={isStock ? 1 : 3}
+                className="w-full bg-[#040508]/70 border border-white/10 rounded-xl p-3.5 text-[#eef0f3] placeholder-[#5b616e] text-sm md:text-[14px] resize-none outline-none transition-all duration-200 focus:border-[var(--accent)] focus:shadow-[0_0_0_3px_var(--accent-dim)] font-sans"
+              />
             </div>
 
-            <AnimatePresence>
-              {debate.status === 'error' && debate.error && (
-                <motion.div
-                  initial={{ opacity: 0, y: -10 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -10 }}
-                  className="mx-4 mt-2 max-w-7xl mx-auto px-4 py-3 rounded-xl border border-red-500/35 bg-red-500/8 flex items-start gap-3 relative z-20"
+            {/* Chips / Quick Examples */}
+            <div className="font-mono text-[10px] font-semibold tracking-[0.16em] uppercase text-[#9ba1ad] mb-2">
+              {isStock ? 'Popular Tickers' : isPersonality ? 'Clash-Worthy Topics' : 'Quick Examples'}
+            </div>
+            <div className="flex flex-wrap gap-1.5 mb-5">
+              {examples.map((t) => (
+                <button
+                  key={t}
+                  onClick={() => setTopic(t)}
+                  className="font-sans text-[11px] px-3 py-1.5 rounded-lg border border-white/10 bg-white/[0.03] text-[#9ba1ad] hover:bg-white/[0.07] hover:text-[#eef0f3] hover:border-white/20 transition-all cursor-pointer"
                 >
-                  <AlertTriangle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="text-red-400 text-xs font-semibold mb-0.5">API Error</p>
-                    <p className="text-red-300/70 text-xs">{debate.error}</p>
-                  </div>
-                </motion.div>
-              )}
-            </AnimatePresence>
+                  {t}
+                </button>
+              ))}
+            </div>
 
-            <DebateArena
-              messages={debate.messages}
-              streamingText={debate.streamingText}
-              streamingMessageId={debate.streamingMessageId}
-              currentRound={debate.currentRound}
-              totalRounds={debate.totalRounds}
-              currentSpeaker={debate.currentSpeaker}
-              status={debate.status}
-              topic={debate.topic}
-              scoreHistory={debate.scoreHistory}
-              waitingForPlayer={debate.waitingForPlayer}
-              submitPlayerArgument={debate.submitPlayerArgument}
-              fallacies={debate.fallacies}
-              factChecks={debate.factChecks}
-              factCheckLoading={debate.factCheckLoading}
-              scores={debate.scores}
-              agentLogs={debate.agentLogs}
-              audienceScore={debate.audienceScore}
-              subject={debate.subject}
-              stockData={debate.stockData}
-              stockLoading={debate.stockLoading}
-            />
+            {/* Rounds Selector */}
+            <div className="font-mono text-[10px] font-semibold tracking-[0.16em] uppercase text-[#9ba1ad] mb-2">Rounds</div>
+            <div className="flex gap-2 mb-6">
+              {([3, 5, 7] as const).map((r) => {
+                const active = rounds === r;
+                return (
+                  <button
+                    key={r}
+                    onClick={() => setRounds(r)}
+                    className={`flex-1 py-3 rounded-xl border text-center cursor-pointer font-mono text-[12px] font-semibold tracking-[0.040em] transition-all duration-200 ${
+                      active 
+                        ? 'text-[#eef0f3] border-[var(--accent)] bg-[color-mix(in_srgb,var(--accent)_12%,transparent)] shadow-[0_0_0_1px_var(--accent)_inset]' 
+                        : 'border-white/10 bg-[#040508]/50 text-[#5b616e] hover:bg-white/[0.05] hover:text-[#9ba1ad]'
+                    }`}
+                  >
+                    <span className="block font-['Anton'] text-lg text-inherit mb-0">{r}</span>
+                    Rounds
+                  </button>
+                );
+              })}
+            </div>
 
-            <AnimatePresence>
-              {showVerdict && debate.scores && (
-                <motion.div
-                  key="verdict"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  transition={{ duration: 0.5 }}
-                >
-                  <div className="flex items-center gap-4 px-4 max-w-7xl mx-auto mb-6">
-                    <div className="flex-1 h-px bg-gradient-to-r from-transparent via-neon-purple/40 to-transparent" />
-                    <span className="text-neon-purple text-[10px] font-orbitron font-bold tracking-[0.25em] uppercase">
-                      ⚖️ Judge's Decision
-                    </span>
-                    <div className="flex-1 h-px bg-gradient-to-r from-transparent via-neon-purple/40 to-transparent" />
-                  </div>
-                  <JudgeVerdict scores={debate.scores} topic={debate.topic} />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </main>
+            {/* Start Button */}
+            <motion.button
+              onClick={handleStart}
+              disabled={!canStart}
+              whileHover={canStart ? { y: -1 } : {}}
+              whileTap={canStart ? { y: 0 } : {}}
+              className={`w-full py-3.5 rounded-xl font-mono font-bold text-xs tracking-[0.18em] uppercase flex items-center justify-center gap-2.5 text-[#08090c] transition-all duration-300 ${
+                canStart ? 'cursor-pointer' : 'opacity-35 cursor-not-allowed'
+              }`}
+              style={{
+                background: canStart ? 'linear-gradient(100deg, #3b7bff, #b06bff, #ff3d5a)' : 'rgba(255,255,255,0.1)',
+                backgroundSize: '220% 100%',
+                boxShadow: canStart ? '0 12px 30px -10px var(--accent-dim)' : 'none',
+              }}
+            >
+              <Zap className="w-4 h-4 fill-current" />
+              <span>{launching ? 'Initializing Arena…' : isStock ? 'Launch War-Room' : isPersonality ? 'Start the Clash' : 'Start Debate'}</span>
+            </motion.button>
+
+          </div>
+        </motion.div>
+
+      </div>
+
+      {/* ── Marquee Ticker Tape ── */}
+      <motion.div variants={itemVariants} className="w-full mt-6 overflow-hidden border-t border-b border-white/10 py-2.5 relative z-10 [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_92%,transparent)]">
+        <div className="flex w-max gap-10 animate-[marquee_26s_linear_infinite]">
+          {[...TICKER_ITEMS, ...TICKER_ITEMS, ...TICKER_ITEMS].map((item, idx) => (
+            <span key={idx} className="font-mono text-[11px] tracking-[0.12em] uppercase text-[#5b616e] whitespace-nowrap flex items-center gap-3">
+              <b className="text-[#f2b705]">◆</b> {item}
+            </span>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* Global CSS for custom animations used by Claude's design */}
+      <style jsx global>{`
+        @keyframes sheen {
+          0%, 100% { background-position: 0% 50%; }
+          50% { background-position: 100% 50%; }
+        }
+        @keyframes marquee {
+          from { transform: translateX(0); }
+          to { transform: translateX(-33.333%); }
+        }
+      `}</style>
+    </motion.div>
   );
 }
