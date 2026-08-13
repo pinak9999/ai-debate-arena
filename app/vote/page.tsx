@@ -4,7 +4,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { supabase } from '@/lib/supabase';
-import { Shield, Sword, CheckCircle } from 'lucide-react';
+import { Shield, Sword, CheckCircle, Loader2 } from 'lucide-react';
 
 function VotingComponent() {
   const searchParams = useSearchParams();
@@ -14,19 +14,31 @@ function VotingComponent() {
   const [voted, setVoted] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // 1. Spam Prevention: चेक करें कि क्या यूज़र पहले ही इस राउंड में वोट कर चुका है
+  useEffect(() => {
+    const hasVoted = localStorage.getItem(`voted_round_${round}`);
+    if (hasVoted) {
+      setVoted(true);
+    }
+  }, [round]);
+
   const handleVote = async (side: 'proponent' | 'opponent') => {
-    setLoading(false);
+    if (loading) return; // अगर पहले से लोडिंग हो रही है, तो डबल क्लिक रोकें
+    
     setLoading(true);
     
+    // 2. Database में topic भी भेजें (ताकि भविष्य में पुराने डिबेट के वोट मिक्स न हों)
     const { error } = await supabase
       .from('votes')
-      .insert([{ side, round_number: round }]);
+      .insert([{ side, round_number: round, topic: topic }]);
 
     if (!error) {
+      // वोट सक्सेसफुल होने पर लोकल स्टोरेज में सेव कर लें
+      localStorage.setItem(`voted_round_${round}`, 'true');
       setVoted(true);
     } else {
       console.error('Vote submission failed:', error);
-      alert('Vote submit nahi ho paya, please try again.');
+      alert('वोट सबमिट नहीं हो पाया, कृपया पुनः प्रयास करें।');
     }
     setLoading(false);
   };
@@ -60,10 +72,10 @@ function VotingComponent() {
         <button
           disabled={loading}
           onClick={() => handleVote('proponent')}
-          className="flex items-center gap-4 p-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 active:bg-cyan-500/20 transition-all text-left group"
+          className="flex items-center gap-4 p-5 rounded-2xl border border-cyan-500/20 bg-cyan-500/5 hover:bg-cyan-500/10 active:bg-cyan-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-left group"
         >
-          <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400">
-            <Shield className="w-6 h-6" />
+          <div className="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 flex items-center justify-center relative">
+            {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Shield className="w-6 h-6" />}
           </div>
           <div>
             <h2 className="font-bold text-cyan-400 font-orbitron tracking-wider text-sm uppercase">Proponent</h2>
@@ -75,10 +87,10 @@ function VotingComponent() {
         <button
           disabled={loading}
           onClick={() => handleVote('opponent')}
-          className="flex items-center gap-4 p-5 rounded-2xl border border-rose-500/20 bg-rose-500/5 active:bg-rose-500/20 transition-all text-left group"
+          className="flex items-center gap-4 p-5 rounded-2xl border border-rose-500/20 bg-rose-500/5 hover:bg-rose-500/10 active:bg-rose-500/20 disabled:opacity-50 disabled:cursor-not-allowed transition-all text-left group"
         >
-          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400">
-            <Sword className="w-6 h-6" />
+          <div className="p-3 rounded-xl bg-rose-500/10 border border-rose-500/30 text-rose-400 flex items-center justify-center relative">
+            {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Sword className="w-6 h-6" />}
           </div>
           <div>
             <h2 className="font-bold text-rose-400 font-orbitron tracking-wider text-sm uppercase">Opponent</h2>
@@ -96,7 +108,7 @@ function VotingComponent() {
 
 export default function StudentVotePage() {
   return (
-    <Suspense fallback={<div className="text-white text-center p-10">Loading Voting Panel...</div>}>
+    <Suspense fallback={<div className="text-white text-center p-10 flex flex-col items-center justify-center min-h-screen"><Loader2 className="w-8 h-8 animate-spin text-blue-500 mb-4" /> Loading Voting Panel...</div>}>
       <VotingComponent />
     </Suspense>
   );
