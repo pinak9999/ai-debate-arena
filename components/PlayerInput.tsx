@@ -14,7 +14,6 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
   
-  // Stale State से बचने के लिए लेटेस्ट वैल्यू का Ref
   const currentValueRef = useRef('');
   useEffect(() => {
     currentValueRef.current = value;
@@ -74,22 +73,27 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
         
-        // 🔥 MASTER FIX: interimResults को false कर दिया गया है। 
-        // अब यह तभी टाइप करेगा जब आप एक वाक्य बोलकर रुकेंगे। इससे Echo/Loop हमेशा के लिए खत्म हो जाएगा।
-        recognition.interimResults = false; 
+        // 🔥 MASTER FIX FOR LAPTOP & MOBILE:
+        // Laptop को लाइव टाइपिंग के लिए 'true' चाहिए, और हमने नीचे लूप को इस तरह लिखा है कि मोबाइल पर भी डुप्लीकेट नहीं होगा।
+        recognition.interimResults = true; 
         
         recognition.lang = 'hi-IN';
 
         recognition.onresult = (event: any) => {
-          let sessionTranscript = '';
-          
-          // इस सेशन के सारे पक्के (final) शब्दों को एक साथ जोड़ें
+          let finalTranscript = '';
+          let interimTranscript = '';
+
+          // लूप हमेशा 0 से चलाएँ ताकि पूरी हिस्ट्री एक साथ साफ-साफ बने (No Duplication)
           for (let i = 0; i < event.results.length; ++i) {
-            sessionTranscript += event.results[i][0].transcript + ' ';
+            if (event.results[i].isFinal) {
+              finalTranscript += event.results[i][0].transcript + ' ';
+            } else {
+              interimTranscript += event.results[i][0].transcript + ' ';
+            }
           }
-          
-          // माइक चालू करने से पहले का टेक्स्ट + अभी बोला गया नया टेक्स्ट
-          const fullText = (initialTextRef.current + ' ' + sessionTranscript).replace(/\s+/g, ' ').trim();
+
+          // पुराना टेक्स्ट + पक्के शब्द + कच्चे शब्द
+          const fullText = (initialTextRef.current + ' ' + finalTranscript + interimTranscript).replace(/\s+/g, ' ').trim();
           setValue(fullText);
           currentValueRef.current = fullText;
         };
@@ -101,7 +105,6 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
 
         recognition.onend = () => {
           setIsListening(false);
-          // माइक बंद होने पर जो भी लेटेस्ट टेक्स्ट है, उसे सेव कर लें
           initialTextRef.current = currentValueRef.current.trim() ? currentValueRef.current.trim() + ' ' : '';
         };
 
@@ -120,7 +123,6 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel(); 
       }
-      // माइक चालू करने से पहले का टेक्स्ट सुरक्षित रख लें
       initialTextRef.current = currentValueRef.current.trim() ? currentValueRef.current.trim() + ' ' : '';
       
       try {
@@ -238,7 +240,6 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
             }
           }}
           onKeyDown={handleKeyDown}
-          // जब माइक चल रहा हो तो टाइपिंग ब्लॉक कर दें ताकि कॉन्फ्लिक्ट न हो
           readOnly={isListening}
           placeholder={isListening ? "Listening to your voice..." : "Type your point here..."}
           rows={2}
