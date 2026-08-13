@@ -2,95 +2,176 @@
 
 import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { RotateCcw, AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Globe2, RotateCcw, Sparkles } from 'lucide-react';
 import HeroSection from '@/components/HeroSection';
 import DebateArena from '@/components/DebateArena';
 import JudgeVerdict from '@/components/JudgeVerdict';
 import ParticleBackground from '@/components/ParticleBackground';
-import { useDebate, DebateLanguage } from '@/hooks/useDebate'; // DebateLanguage टाइप इम्पोर्ट किया
+import { useDebate, DebateLanguage } from '@/hooks/useDebate';
 import { ModeToggle } from '@/components/ModeToggle';
 
 export default function Home() {
   const debate = useDebate();
-  
-  // 🔥 भाषा स्टेट
   const [selectedLang, setSelectedLang] = useState<DebateLanguage>('Hindi');
 
-  const handleStart = (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality') => {
-    // 🔥 यहाँ भाषा पास की जा रही है
-    debate.startDebate({ topic: input, totalRounds: rounds, subject, language: selectedLang });
+  const handleStart = (
+    input: string,
+    rounds: number,
+    subject: 'topic' | 'stock' | 'personality'
+  ) => {
+    debate.startDebate({
+      topic: input,
+      totalRounds: rounds,
+      subject,
+      language: selectedLang,
+    });
   };
 
-  const showHero   = debate.status === 'idle';
-  const showArena  = debate.status !== 'idle';
+  const showHero = debate.status === 'idle';
+  const showArena = debate.status !== 'idle';
   const showVerdict = debate.status === 'finished' && !!debate.scores;
 
   return (
-    <main className="relative min-h-screen bg-cyber-dark overflow-x-hidden">
-      {/* ── Ambient layers ────────────────────────────────────────────── */}
+    <main
+      className="relative min-h-screen overflow-x-hidden"
+      style={{
+        background:
+          'radial-gradient(circle at 50% 0%, rgba(84,220,255,.07), transparent 28%), radial-gradient(circle at 10% 70%, rgba(154,108,255,.06), transparent 25%), #03060d',
+      }}
+    >
       <ParticleBackground />
 
-      {/* Subtle cyber grid */}
-      <div
-        className="fixed inset-0 pointer-events-none z-0 opacity-[0.28]"
-        style={{
-          backgroundImage: `
-            linear-gradient(rgba(0,212,255,0.04) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0,212,255,0.04) 1px, transparent 1px)
-          `,
-          backgroundSize: '48px 48px',
-        }}
-        aria-hidden="true"
-      />
-
+      {/* Clean ambient grid */}
       <div
         className="fixed inset-0 pointer-events-none z-0"
-        style={{
-          background:
-            'repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,212,255,0.008) 3px, rgba(0,212,255,0.008) 4px)',
-        }}
         aria-hidden="true"
+        style={{
+          opacity: 0.2,
+          backgroundImage:
+            'linear-gradient(rgba(84,220,255,.035) 1px, transparent 1px), linear-gradient(90deg, rgba(84,220,255,.035) 1px, transparent 1px)',
+          backgroundSize: '56px 56px',
+          maskImage: 'linear-gradient(to bottom, black 0%, transparent 92%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black 0%, transparent 92%)',
+        }}
       />
 
-      {/* ── Pages ─────────────────────────────────────────────────────── */}
       <AnimatePresence mode="wait">
         {showHero && (
           <motion.div
             key="hero"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.3 } }}
-            className="flex flex-col items-center justify-center min-h-screen relative z-10"
+            exit={{ opacity: 0, scale: 0.985, transition: { duration: 0.25 } }}
+            style={{
+              position: 'relative',
+              zIndex: 10,
+              minHeight: '100dvh',
+              display: 'flex',
+              flexDirection: 'column',
+            }}
           >
-            {/* ── MODE & LANGUAGE SELECTOR ────────────────────────── */}
-            <div className="mb-8 flex flex-col items-center gap-6">
-              <div className="flex flex-col items-center">
-                <p className="text-gray-400 text-xs mb-3 uppercase tracking-widest font-bold">Select Game Mode</p>
-                <ModeToggle
-                  mode={debate.mode}
-                  setMode={debate.setMode}
-                  disabled={debate.status !== 'idle'}
-                />
-              </div>
-
-              {/* 🔥 नया लैंग्वेज सेलेक्टर */}
-              <div className="flex flex-col items-center">
-                 <p className="text-gray-400 text-xs mb-3 uppercase tracking-widest font-bold">Select Language</p>
-                 <select 
-                  value={selectedLang} 
-                  onChange={(e) => setSelectedLang(e.target.value as DebateLanguage)}
-                  className="bg-black/40 border border-white/10 text-white text-xs uppercase tracking-widest px-6 py-2 rounded-full cursor-pointer hover:border-blue-500/50 transition-all outline-none"
+            {/* Compact top control dock.
+                IMPORTANT: it is NOT a separate full-height section anymore. */}
+            <header
+              style={{
+                width: '100%',
+                boxSizing: 'border-box',
+                padding: '12px clamp(14px, 3vw, 34px)',
+                display: 'flex',
+                justifyContent: 'center',
+              }}
+            >
+              <div
+                style={{
+                  width: '100%',
+                  maxWidth: 1180,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 12,
+                  padding: 6,
+                  borderRadius: 17,
+                  background: 'rgba(8,13,26,.72)',
+                  border: '1px solid rgba(255,255,255,.075)',
+                  boxShadow: '0 12px 40px rgba(0,0,0,.24)',
+                  backdropFilter: 'blur(18px)',
+                  WebkitBackdropFilter: 'blur(18px)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 9,
+                    paddingLeft: 8,
+                    color: 'rgba(255,255,255,.55)',
+                    fontSize: 8,
+                    fontWeight: 900,
+                    letterSpacing: '.14em',
+                  }}
                 >
-                  <option value="Hindi">Hindi (हिंदी)</option>
-                  <option value="English">English</option>
-                  <option value="Gujarati">Gujarati (ગુજરાતી)</option>
-                  <option value="Marathi">Marathi (मराठी)</option>
-                  <option value="Punjabi">Punjabi (ਪੰਜਾਬੀ)</option>
-                </select>
-              </div>
-            </div>
+                  <Sparkles size={13} style={{ color: '#55dcff' }} />
+                  ARENA CONTROL
+                </div>
 
-            <HeroSection onStart={handleStart} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-end' }}>
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '3px 5px',
+                      borderRadius: 11,
+                      background: 'rgba(255,255,255,.035)',
+                    }}
+                  >
+                    <ModeToggle
+                      mode={debate.mode}
+                      setMode={debate.setMode}
+                      disabled={debate.status !== 'idle'}
+                    />
+                  </div>
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      padding: '8px 10px',
+                      borderRadius: 11,
+                      border: '1px solid rgba(255,255,255,.065)',
+                      background: 'rgba(255,255,255,.025)',
+                    }}
+                  >
+                    <Globe2 size={12} style={{ color: '#9a6cff' }} />
+                    <select
+                      aria-label="Select debate language"
+                      value={selectedLang}
+                      onChange={(e) => setSelectedLang(e.target.value as DebateLanguage)}
+                      style={{
+                        border: 0,
+                        outline: 0,
+                        background: 'transparent',
+                        color: 'rgba(255,255,255,.65)',
+                        fontSize: 9,
+                        fontWeight: 800,
+                        cursor: 'pointer',
+                      }}
+                    >
+                      <option style={{ background: '#090d18' }} value="Hindi">Hindi</option>
+                      <option style={{ background: '#090d18' }} value="English">English</option>
+                      <option style={{ background: '#090d18' }} value="Gujarati">Gujarati</option>
+                      <option style={{ background: '#090d18' }} value="Marathi">Marathi</option>
+                      <option style={{ background: '#090d18' }} value="Punjabi">Punjabi</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+            </header>
+
+            <div style={{ flex: 1, display: 'flex', alignItems: 'stretch' }}>
+              <HeroSection onStart={handleStart} />
+            </div>
           </motion.div>
         )}
 
@@ -99,18 +180,28 @@ export default function Home() {
             key="arena"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.55 }}
+            transition={{ duration: 0.45 }}
             className="min-h-screen"
+            style={{ position: 'relative', zIndex: 10 }}
           >
-            <div className="flex items-center justify-between px-4 pt-5 pb-1 max-w-7xl mx-auto relative z-20">
+            <div
+              className="flex items-center justify-between px-4 pt-4 pb-1 max-w-7xl mx-auto"
+              style={{ position: 'relative', zIndex: 20 }}
+            >
               <div>
                 <h1 className="font-orbitron font-black text-base text-white tracking-[0.18em] uppercase">
-                  {debate.subject === 'stock' ? 'Financial War-Room' : debate.subject === 'personality' ? 'Personality Clash Arena' : 'AI Debate Arena'}
+                  {debate.subject === 'stock'
+                    ? 'Financial War-Room'
+                    : debate.subject === 'personality'
+                      ? 'Personality Clash Arena'
+                      : 'AI Debate Arena'}
                 </h1>
                 <p className="text-white/25 text-[10px] tracking-[0.25em] uppercase">
-                  {debate.status === 'judging' ? 'Evaluating…' : 'Live Session'} | Language: {debate.language}
+                  {debate.status === 'judging' ? 'Evaluating…' : 'Live Session'} | Language:{' '}
+                  {debate.language}
                 </p>
               </div>
+
               <button
                 id="new-debate-btn"
                 onClick={debate.resetDebate}
