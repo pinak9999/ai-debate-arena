@@ -11,9 +11,6 @@ interface QueueItem {
   resolve: () => void;
 }
 
-// FIX: पहले सिर्फ 5 भाषाएँ mapped थीं (Hindi/English/Gujarati/Marathi/Punjabi),
-// बाकी सब (Bengali, Tamil, Telugu, Kannada, Malayalam) default में जाकर
-// चुपचाप hi-IN बन जाती थीं। अब सभी 10 सपोर्टेड भाषाओं के सही BCP-47 codes हैं।
 const getLangCode = (langName: string = 'Hindi') => {
   switch (langName.toLowerCase()) {
     case 'english':   return 'en-IN';
@@ -33,17 +30,32 @@ const getLangCode = (langName: string = 'Hindi') => {
 export function useSpeech() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-
+  
+  const isMutedRef = useRef(isMuted);
   const queueRef = useRef<QueueItem[]>([]);
   const processingRef = useRef(false);
 
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
+  
+  // Chrome TTS को बीच में रुकने से बचाने के लिए टाइमर
+  const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  useEffect(() => {
+    isMutedRef.current = isMuted;
+  }, [isMuted]);
+
+  const clearKeepAlive = () => {
+    if (keepAliveIntervalRef.current) {
+      clearInterval(keepAliveIntervalRef.current);
+      keepAliveIntervalRef.current = null;
+    }
+  };
 
   const processQueue = useCallback(async () => {
     if (processingRef.current) return;
+    
     const item = queueRef.current.shift();
-
     if (!item) {
       setIsSpeaking(false);
       return;
@@ -53,76 +65,90 @@ export function useSpeech() {
     setIsSpeaking(true);
 
     const playNativeTTS = () => {
+      if (isMutedRef.current) {
+        processingRef.current = false;
+        item.resolve();
+        processQueue();
+        return;
+      }
+
+      // टेक्स्ट को साफ करें लेकिन Chunking न करें, ताकि Flow बना रहे
       const cleanText = item.text.replace(/[*#_`~[\]]/g, '').trim();
-
-      const chunks = (cleanText.match(/[^।!?.\n]+[।!?.\n]*/g) || [cleanText])
-        .map(c => c.trim())
-        .filter(c => c.length > 0);
-
-      let currentChunk = 0;
       window.speechSynthesis.cancel();
+      clearKeepAlive();
 
-      const speakNext = () => {
-        if (currentChunk >= chunks.length || isMuted) {
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+      currentUtteranceRef.current = utterance;
+
+      const targetLangCode = getLangCode(item.language);
+      utterance.lang = targetLangCode;
+      
+      // Native TTS में क्षेत्रीय भाषाओं का फ्लो खराब न हो, इसलिए Pitch 1 रखेंगे
+      utterance.pitch = 1.0;
+      utterance.rate = 1.0;
+
+      const setVoiceAndSpeak = () => {
+        const voices = window.speechSynthesis.getVoices();
+        let selectedVoice = voices.find(v => v.lang === targetLangCode);
+        
+        if (!selectedVoice) {
+          selectedVoice = voices.find(v => v.lang.includes(targetLangCode.split('-')[0]));
+        }
+
+        if (selectedVoice) utterance.voice = selectedVoice;
+
+        utterance.onstart = () => {
+          // Chrome का 14-सेकंड का बग फिक्स: हर 10 सेकंड में बैकग्राउंड में रिफ्रेश करें
+          keepAliveIntervalRef.current = setInterval(() => {
+            if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+              window.speechSynthesis.pause();
+              window.speechSynthesis.resume();
+            }
+          }, 10000);
+        };
+
+        utterance.onend = () => {
+          clearKeepAlive();
           processingRef.current = false;
           item.resolve();
           processQueue();
-          return;
-        }
-
-        const utterance = new SpeechSynthesisUtterance(chunks[currentChunk]);
-        currentUtteranceRef.current = utterance;
-
-        const targetLangCode = getLangCode(item.language);
-        utterance.lang = targetLangCode;
-
-        utterance.pitch = item.speaker === 'opponent' ? 0.8 : item.speaker === 'judge' ? 0.9 : 1.1;
-
-        const setVoiceAndSpeak = () => {
-          const voices = window.speechSynthesis.getVoices();
-
-          let selectedVoice = voices.find(v => v.lang === targetLangCode);
-          if (!selectedVoice) {
-            selectedVoice = voices.find(v => v.lang.includes(targetLangCode.split('-')[0]));
-          }
-
-          if (selectedVoice) {
-            utterance.voice = selectedVoice;
-          } else {
-            // FIX: अगर device पर उस भाषा की voice ही install नहीं है (जैसे Kannada/Malayalam
-            // अक्सर Windows/Chrome पर missing होती हैं), तो पुरानी code silently गलत भाषा में
-            // बोल देता था। अब console warning देंगे ताकि debugging आसान हो — TTS फिर भी
-            // चलेगी (browser अपनी default voice से try करेगा) बजाय हैंग होने के।
-            console.warn(`No native voice found for lang "${targetLangCode}". Falling back to browser default voice.`);
-          }
-
-          utterance.onend = () => {
-            currentChunk++;
-            speakNext();
-          };
-
-          utterance.onerror = (e) => {
-            console.warn(`Native TTS Error on chunk ${currentChunk}:`, e);
-            currentChunk++;
-            speakNext();
-          };
-
-          window.speechSynthesis.resume();
-          window.speechSynthesis.speak(utterance);
         };
 
-        if (window.speechSynthesis.getVoices().length === 0) {
-          window.speechSynthesis.onvoiceschanged = () => {
-            setVoiceAndSpeak();
-            window.speechSynthesis.onvoiceschanged = null;
-          };
-        } else {
-          setVoiceAndSpeak();
-        }
+        utterance.onerror = (e) => {
+          clearKeepAlive();
+          // अगर Cancel किया गया है, तो एरर इग्नोर करें
+          if (e.error !== 'canceled') {
+            console.warn(`Native TTS Error:`, e);
+          }
+          processingRef.current = false;
+          item.resolve();
+          processQueue();
+        };
+
+        window.speechSynthesis.resume();
+        window.speechSynthesis.speak(utterance);
       };
 
-      speakNext();
+      if (window.speechSynthesis.getVoices().length === 0) {
+        window.speechSynthesis.onvoiceschanged = () => {
+          setVoiceAndSpeak();
+          window.speechSynthesis.onvoiceschanged = null;
+        };
+      } else {
+        setVoiceAndSpeak();
+      }
     };
+
+    // 🔥 ELEVENLABS SUPPORT CHECK
+    // सिर्फ वही भाषाएँ यहाँ रखें जो ElevenLabs बहुत अच्छे से बोलता है
+    const elevenLabsSupported = ['english', 'hindi', 'tamil'];
+    const isSupportedByElevenLabs = elevenLabsSupported.includes(item.language.toLowerCase());
+
+    if (!isSupportedByElevenLabs) {
+      // अगर मराठी, पंजाबी है, तो सीधे Native TTS पर भेजें ताकि आवाज़ खराब न हो
+      playNativeTTS();
+      return;
+    }
 
     try {
       const res = await fetch('/api/tts', {
@@ -136,7 +162,6 @@ export function useSpeech() {
       });
 
       if (!res.ok) {
-        console.warn('ElevenLabs API failed, switching to Native TTS...');
         playNativeTTS();
         return;
       }
@@ -155,42 +180,35 @@ export function useSpeech() {
       };
 
       audio.onerror = () => {
-        console.warn('Audio play error, switching to Native TTS...');
         URL.revokeObjectURL(audioUrl);
         currentAudioRef.current = null;
         playNativeTTS();
       };
 
-      if (!isMuted) {
+      if (!isMutedRef.current) {
         await audio.play();
       } else {
-        // FIX: पहले यहाँ `audio.onended(new Event('ended'))` लिखा था — ये गलत तरीका है,
-        // event handler को function की तरह call नहीं करते और इससे runtime error/silent
-        // hang हो सकता था जब muted state में queue आगे ही नहीं बढ़ती थी। अब सीधा resolve करके
-        // queue आगे बढ़ा रहे हैं जैसे बाकी जगह होता है।
         URL.revokeObjectURL(audioUrl);
         currentAudioRef.current = null;
         processingRef.current = false;
         item.resolve();
         processQueue();
       }
-
     } catch (error) {
-      console.error('TTS Fetch Error:', error);
       playNativeTTS();
     }
-  }, [isMuted]);
+  }, []);
 
   const speak = useCallback((text: string, speaker: SpeakerType = 'proponent', language: string = 'Hindi'): Promise<void> => {
     return new Promise((resolve) => {
-      if (isMuted || !text.trim()) {
+      if (isMutedRef.current || !text.trim()) {
         resolve();
         return;
       }
       queueRef.current.push({ text, speaker, language, resolve });
       processQueue();
     });
-  }, [processQueue, isMuted]);
+  }, [processQueue]);
 
   const stop = useCallback(() => {
     if (currentAudioRef.current) {
@@ -198,6 +216,7 @@ export function useSpeech() {
       currentAudioRef.current.currentTime = 0;
       currentAudioRef.current = null;
     }
+    clearKeepAlive();
     window.speechSynthesis.cancel();
     queueRef.current = [];
     processingRef.current = false;
@@ -212,6 +231,7 @@ export function useSpeech() {
           currentAudioRef.current.pause();
           currentAudioRef.current.currentTime = 0;
         }
+        clearKeepAlive();
         window.speechSynthesis.cancel();
         queueRef.current = [];
         processingRef.current = false;
@@ -224,6 +244,7 @@ export function useSpeech() {
   useEffect(() => {
     return () => {
       if (currentAudioRef.current) currentAudioRef.current.pause();
+      clearKeepAlive();
       window.speechSynthesis.cancel();
     };
   }, []);
