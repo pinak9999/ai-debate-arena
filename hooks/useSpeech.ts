@@ -11,9 +11,10 @@ interface QueueItem {
   resolve: () => void;
 }
 
+// Native TTS के लिए BCP-47 लैंग्वेज कोड्स
 const getLangCode = (langName: string = 'Hindi') => {
   switch (langName.toLowerCase()) {
-    case 'english':   return 'en-IN';
+    case 'english':   return 'en-IN'; // या 'en-US'
     case 'gujarati':  return 'gu-IN';
     case 'marathi':   return 'mr-IN';
     case 'punjabi':   return 'pa-IN';
@@ -22,6 +23,12 @@ const getLangCode = (langName: string = 'Hindi') => {
     case 'telugu':    return 'te-IN';
     case 'kannada':   return 'kn-IN';
     case 'malayalam': return 'ml-IN';
+    case 'french':    return 'fr-FR';
+    case 'spanish':   return 'es-ES';
+    case 'german':    return 'de-DE';
+    case 'japanese':  return 'ja-JP';
+    case 'korean':    return 'ko-KR';
+    case 'arabic':    return 'ar-SA';
     case 'hindi':
     default: return 'hi-IN';
   }
@@ -72,7 +79,7 @@ export function useSpeech() {
         return;
       }
 
-      // टेक्स्ट को साफ करें लेकिन Chunking न करें, ताकि Flow बना रहे
+      // पूरा टेक्स्ट एक साथ ताकि फ्लो न टूटे
       const cleanText = item.text.replace(/[*#_`~[\]]/g, '').trim();
       window.speechSynthesis.cancel();
       clearKeepAlive();
@@ -83,7 +90,6 @@ export function useSpeech() {
       const targetLangCode = getLangCode(item.language);
       utterance.lang = targetLangCode;
       
-      // Native TTS में क्षेत्रीय भाषाओं का फ्लो खराब न हो, इसलिए Pitch 1 रखेंगे
       utterance.pitch = 1.0;
       utterance.rate = 1.0;
 
@@ -98,7 +104,6 @@ export function useSpeech() {
         if (selectedVoice) utterance.voice = selectedVoice;
 
         utterance.onstart = () => {
-          // Chrome का 14-सेकंड का बग फिक्स: हर 10 सेकंड में बैकग्राउंड में रिफ्रेश करें
           keepAliveIntervalRef.current = setInterval(() => {
             if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
               window.speechSynthesis.pause();
@@ -116,7 +121,6 @@ export function useSpeech() {
 
         utterance.onerror = (e) => {
           clearKeepAlive();
-          // अगर Cancel किया गया है, तो एरर इग्नोर करें
           if (e.error !== 'canceled') {
             console.warn(`Native TTS Error:`, e);
           }
@@ -139,13 +143,21 @@ export function useSpeech() {
       }
     };
 
-    // 🔥 ELEVENLABS SUPPORT CHECK
-    // सिर्फ वही भाषाएँ यहाँ रखें जो ElevenLabs बहुत अच्छे से बोलता है
-    const elevenLabsSupported = ['english', 'hindi', 'tamil'];
+    // 🔥 ELEVENLABS MULTILINGUAL V2 SUPPORTED LANGUAGES
+    // ये वो सभी 29 भाषाएँ हैं जिन्हें ElevenLabs परफेक्ट बोल सकता है
+    const elevenLabsSupported = [
+      'english', 'japanese', 'chinese', 'german', 'hindi', 'french', 
+      'korean', 'portuguese', 'italian', 'spanish', 'indonesian', 
+      'dutch', 'turkish', 'filipino', 'polish', 'swedish', 'bulgarian', 
+      'romanian', 'arabic', 'czech', 'greek', 'finnish', 'croatian', 
+      'malay', 'slovak', 'danish', 'tamil', 'ukrainian', 'russian'
+    ];
+    
     const isSupportedByElevenLabs = elevenLabsSupported.includes(item.language.toLowerCase());
 
     if (!isSupportedByElevenLabs) {
-      // अगर मराठी, पंजाबी है, तो सीधे Native TTS पर भेजें ताकि आवाज़ खराब न हो
+      // अगर भाषा लिस्ट में नहीं है (जैसे: पंजाबी, मराठी, बंगाली), तो सीधे Native TTS चलाएँ
+      console.log(`ElevenLabs doesn't perfectly support ${item.language}, routing to Native TTS...`);
       playNativeTTS();
       return;
     }
@@ -162,8 +174,7 @@ export function useSpeech() {
       });
 
       if (!res.ok) {
-        playNativeTTS();
-        return;
+        throw new Error('ElevenLabs API Failed');
       }
 
       const blob = await res.blob();
@@ -195,6 +206,7 @@ export function useSpeech() {
         processQueue();
       }
     } catch (error) {
+      console.warn('Fallback to Native TTS due to API error:', error);
       playNativeTTS();
     }
   }, []);
