@@ -29,39 +29,24 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
     }
 
-    let limitedText = "";
-    let videoTitle = "YouTube Video";
-
-    // 1. सबसे पहले Transcript निकालने की कोशिश करो
+    // 1. वीडियो का ट्रांसक्रिप्ट (Subtitles) निकालो
+    let transcriptItems;
     try {
-      const transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
-      const fullText = transcriptItems.map((item: any) => item.text).join(' ');
-      limitedText = fullText.slice(0, 15000); 
+      transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
     } catch (error) {
-      // 🚨 SMART FALLBACK FOR COLLEGE PROJECT 🚨
-      // अगर YouTube transcript को ब्लॉक कर दे, तो Error मत दो!
-      // Noembed API से वीडियो का Title निकाल लो और AI को दे दो!
-      try {
-        const embedRes = await fetch(`https://noembed.com/embed?url=https://www.youtube.com/watch?v=${videoId}`);
-        const embedData = await embedRes.json();
-        
-        if (embedData.title) {
-          videoTitle = embedData.title;
-          // AI को कॉन्टेक्स्ट दे रहे हैं कि वीडियो इस टॉपिक पर है
-          limitedText = `Video Title: "${videoTitle}". This is a highly debated political/social video. Analyze the general context, potential controversies, and main arguments associated with this topic.`;
-        } else {
-           throw new Error("No title found");
-        }
-      } catch (fallbackError) {
-         // अगर टाइटल भी न मिले तब जाकर एरर दिखाओ
-         return NextResponse.json({ error: 'YouTube blocked the request. Try another video link.' }, { status: 400 });
-      }
+      return NextResponse.json({ error: 'Could not fetch transcript. Make sure the video has captions enabled.' }, { status: 400 });
     }
 
-    // 2. Groq AI से वीडियो की समरी और मेन दावे (Claims) निकलवाओ
-    const prompt = `You are an expert content analyzer. Read this context of a YouTube video and extract the core topic and the top 3 claims/arguments made by the creator.
+    // ट्रांसक्रिप्ट को एक सिंगल टेक्स्ट में जोड़ो
+    const fullText = transcriptItems.map(item => item.text).join(' ');
+    
+    // LLM के लिए टेक्स्ट को लिमिट करो (ताकि 10 सेकंड की लिमिट क्रॉस न हो)
+    const limitedText = fullText.slice(0, 15000); 
 
-Context:
+    // 2. Groq AI से वीडियो की समरी और मेन दावे (Claims) निकलवाओ
+    const prompt = `You are an expert content analyzer. Read this transcript of a YouTube video and extract the core topic and the top 3 claims/arguments made by the creator.
+
+Transcript:
 "${limitedText}"
 
 Respond STRICTLY in JSON format without any markdown blocks or extra text:
@@ -82,9 +67,9 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
       const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
       result = JSON.parse(cleanJson);
     } catch (e) {
-      // Fallback in case JSON parsing fails
+      // Fallback
       result = {
-        topic: videoTitle,
+        topic: "YouTube Video Analysis",
         claims: limitedText.slice(0, 300) + "..."
       };
     }

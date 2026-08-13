@@ -12,9 +12,17 @@ const groq = createGroq({
 
 function safeJsonParse<T>(raw: string, fallback: T): T {
   try {
-    const clean = raw.replace(/```json/g, '').replace(/```/g, '').trim();
+    // LLM कभी-कभी markdown लगा देता है, उसे साफ़ करना ज़रूरी है
+    let clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    // कभी-कभी LLM शुरुआत में text लिख देता है, तो हम सिर्फ {} वाला हिस्सा निकालेंगे
+    const startIndex = clean.indexOf('{');
+    const endIndex = clean.lastIndexOf('}');
+    if (startIndex !== -1 && endIndex !== -1) {
+      clean = clean.substring(startIndex, endIndex + 1);
+    }
     return JSON.parse(clean) as T;
-  } catch {
+  } catch (error) {
+    console.error("JSON Parse fallback triggered:", error);
     return fallback;
   }
 }
@@ -47,16 +55,17 @@ function toManualTextStream(text: string): Response {
   });
 }
 
+// 🔥 FIX 1: Smarter Search Query Generation
 async function generateSearchQuery(text: string): Promise<string> {
   try {
     const { text: query } = await generateText({
       model: groq('llama-3.1-8b-instant'),
-      prompt: `Extract the core factual entity, company name, or subject from this text for a web search. If it mentions a stock ticker (e.g., PWL.NS), output the company name and the word "stock". \nText: "${text.slice(0, 300)}"\nOutput ONLY 3-5 English keywords. No quotes, no intro.`,
+      prompt: `You are an expert Google Search query generator. Extract a highly specific 3 to 5 word search query to fact-check the following statement. \nStatement: "${text.slice(0, 300)}"\nCRITICAL: Output ONLY the search keywords. Do NOT use quotes, do NOT explain, do NOT write "Search query:". Just the words.`,
       temperature: 0.1,
     });
-    return query.replace(/["']/g, '').trim();
+    return query.replace(/["'\n]/g, '').trim();
   } catch {
-    return text.replace(/[।!?,.\n]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 6).join(' ').trim();
+    return text.replace(/[।!?,.\n]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 5).join(' ').trim();
   }
 }
 
@@ -117,7 +126,7 @@ async function searchTavily(query: string): Promise<{ answer: string | null; sou
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch('https://api.tavily.com/search', {
+    const res = await fetch('[https://api.tavily.com/search](https://api.tavily.com/search)', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -212,7 +221,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const res = await fetch(
-          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=5m&range=1d`,
+          `[https://query1.finance.yahoo.com/v8/finance/chart/$](https://query1.finance.yahoo.com/v8/finance/chart/$){encodeURIComponent(symbol)}?interval=5m&range=1d`,
           { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }
         );
         const json = await res.json();
@@ -271,7 +280,7 @@ export async function POST(req: NextRequest) {
 
       const isStockMode = mode === 'stock';
       const isPersonalityMode = mode === 'personality';
-      const isYoutubeMode = mode === 'youtube'; // 🔥 नया मोड डिडक्ट किया
+      const isYoutubeMode = mode === 'youtube'; 
       const position = speaker === 'proponent' ? 'SUPPORTING' : 'OPPOSING';
 
       const messages = history.map((msg: { speaker: string; text: string }) => ({
@@ -288,7 +297,6 @@ export async function POST(req: NextRequest) {
 CRITICAL: Use these EXACT numbers in your argument. Do not just state the price; analyze WHAT it means for momentum, valuation, or trend.`
           : `No live market feed available right now. Argue using general macroeconomic and sector-specific financial knowledge.`;
       } else if (isPersonalityMode || isYoutubeMode) {
-        // 🔥 YouTube वीडियो के टॉपिक को लेकर लाइव वेब सर्च करेगा
         const searchContext = round === 1 ? topic.replace('[YOUTUBE CONTEXT]', '') : (history.length > 0 ? history[history.length - 1].text : topic);
         const tavilyData = await groundWithTavily(searchContext);
         groundingBlock = tavilyData
@@ -315,21 +323,21 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 
       let roundInstruction = '';
       if (isYoutubeMode) {
-        // 🔥 YouTube Mode Round Instructions
         if (round === 1) {
           roundInstruction = speaker === 'proponent'
-            ? "OPENING DEFENSE: You are a loyal fan of this creator. Strongly agree with the video's main claims and defend them fiercely. (60-80 words)."
-            : "OPENING CRITIQUE: You are a ruthless fact-checker. Attack the creator's main claims. Expose bias, missing context, or half-truths. (60-80 words).";
+            ? "OPENING DEFENSE: You are a loyal fan of this creator. Strongly agree with the video's main claims and defend them fiercely. MUST include a specific data point from the context. (60-80 words)."
+            : "OPENING CRITIQUE: You are a ruthless fact-checker. Attack the creator's main claims. Expose bias or missing context using specific counter-data. (60-80 words).";
         } else if (round === totalRounds) {
           roundInstruction = speaker === 'proponent'
             ? "FINAL STAND: Powerfully summarize why the creator is absolutely right and the critics are wrong. (Max 50 words)."
             : "FINAL TAKEDOWN: Deliver a crushing conclusion on why the video is misleading, flawed, or biased. (Max 50 words).";
         } else {
           roundInstruction = speaker === 'proponent'
-            ? "COUNTER-ATTACK: Defend the creator against the opponent's criticism. Provide a new supporting angle to validate the video. (60-80 words)."
-            : "DIRECT CLASH: Dismantle the defender's logic. Point out exactly why the creator's argument falls apart in the real world. (60-80 words).";
+            ? "COUNTER-ATTACK: Defend the creator against the opponent's criticism. CRUCIAL: You MUST provide a SPECIFIC FACT, NUMBER, or STATISTIC from the context to back your claim. Do not be vague. (60-80 words)."
+            : "DIRECT CLASH: Dismantle the defender's logic. Point out exactly why the creator's argument falls apart in the real world using concrete numbers. (60-80 words).";
         }
       } else if (isStockMode) {
+        // ... (stock mode logic unchanged)
         if (round === 1) {
           roundInstruction = 'OPENING PITCH: State your core investment thesis clearly. Act like an elite Wall Street Hedge Fund Manager. Justify your bullish/bearish stance using the live data. (60-80 words).';
         } else if (round === totalRounds) {
@@ -338,6 +346,7 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
           roundInstruction = "DIRECT CLASH: Aggressively attack the specific fundamental or technical flaw in the opponent's last point. Then reinforce your own trade thesis with a new metric or market angle. (60-80 words).";
         }
       } else if (isPersonalityMode) {
+        // ... (personality mode logic unchanged)
         if (round === 1) {
           roundInstruction = speaker === 'proponent'
             ? 'OPENING BLITZ: Open with hard data, statistics, or a current news fact. Be direct, punchy, assertive. (60-80 words).'
@@ -364,8 +373,12 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
       const rlInstruction = buildRLInstruction(audienceScore, round, speaker);
 
       let opponentExtraInstruction = '';
+      let proponentExtraInstruction = '';
+
       if (isYoutubeMode) {
-        opponentExtraInstruction = `Identify ONE major logical flaw, bias, or missing real-world fact from the YouTuber's claims, and hammer it.`;
+        // 🔥 FIX 4: Smarter Opponent Logic (No self-goals)
+        opponentExtraInstruction = `Identify ONE major logical flaw, bias, or missing real-world fact from the YouTuber's claims. CRUCIAL: Make sure your counter-argument actually REFUTES the video. Do not accidentally use data that supports the creator's point. Your goal is to prove the video is WRONG.`;
+        proponentExtraInstruction = `CRITICAL RULE: You MUST extract and state at least ONE specific statistic, number, or concrete fact from the provided video context. Do NOT say "I will use data" without actually providing the exact numbers.`;
       } else if (isStockMode) {
         opponentExtraInstruction = `As the RUTHLESS BEAR, identify ONE fresh fundamental, valuation, or macroeconomic risk not mentioned before, and weave it naturally into your argument. Your goal is to create doubt.`;
       } else if (isPersonalityMode) {
@@ -379,12 +392,12 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 You are debating a popular YouTube video's claims. Topic/Context: "${topic}".
 Role: ${speaker === 'proponent' ? 'THE LOYAL SUPPORTER' : 'THE RUTHLESS CRITIC'}.
 ${groundingBlock}
-${speaker === 'opponent' ? opponentExtraInstruction : ''}
+${speaker === 'opponent' ? opponentExtraInstruction : proponentExtraInstruction}
 ${antiRepetitionRule}
 ${rlInstruction}
 ${roundInstruction}
 ${langInstruction}
-Tone: ${speaker === 'proponent' ? 'Defensive, supportive, highly confident.' : 'Skeptical, fact-driven, aggressive critic.'}
+Tone: ${speaker === 'proponent' ? 'Defensive, supportive, highly confident, strictly fact-based.' : 'Skeptical, fact-driven, aggressive critic.'}
         `.trim()
         : isStockMode
         ? `
@@ -487,6 +500,7 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         if (msg.speaker === 'opponent') oppPenalty += deduction;
       });
 
+      // 🔥 FIX 2: Strict JSON enforcement for the Judge
       const judgePrompt = `You are a strict, expert debate judge. Evaluate the FULL debate on Topic: "${topic}"${biasNote}
 
 Transcript:
@@ -500,11 +514,11 @@ Score EACH debater SEPARATELY across FOUR distinct categories, each out of 100.
 - "evidence": use of concrete facts and data.
 
 CRITICAL RULES:
-1. If a debater relied on EXTREME fear-mongering (e.g., "toxic asset", "ticking time bomb", "catastrophic", "house of cards") without hard data, heavily penalize their LOGIC score.
-2. You must account for cumulative performance. Do not just look at the last round.
+1. If a debater relied on EXTREME fear-mongering without hard data, heavily penalize their LOGIC score.
+2. You must account for cumulative performance.
 3. Ensure a clear winner unless it is absolutely identical in quality.
 
-Respond STRICTLY with JSON ONLY, no extra text:
+Respond STRICTLY with a RAW JSON object. DO NOT wrap the JSON in markdown blocks (no \`\`\`json). DO NOT include any text before or after the JSON.
 {
   "winner": "proponent" | "opponent" | "tie",
   "proponent": {"logic": 0, "creativity": 0, "persuasion": 0, "evidence": 0},
@@ -514,7 +528,7 @@ Respond STRICTLY with JSON ONLY, no extra text:
 
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
-        temperature: 0.4,
+        temperature: 0.1, // Lowered temperature for consistent JSON formatting
         prompt: judgePrompt
       });
 
@@ -522,8 +536,9 @@ Respond STRICTLY with JSON ONLY, no extra text:
         winner: 'tie' as const,
         proponent: { logic: 75, creativity: 75, persuasion: 75, evidence: 75 },
         opponent: { logic: 75, creativity: 75, persuasion: 75, evidence: 75 },
-        reasoning: 'The debate was a tie.',
+        reasoning: 'The debate was a tie due to system evaluation error.',
       };
+      
       const object = safeJsonParse(text, fallbackShape);
 
       const proLogic = clampScore(object?.proponent?.logic, 75);
@@ -614,7 +629,7 @@ CRITICAL RULES:
 1. If a debater uses extreme fear-mongering rhetoric without concrete numerical data, their score MUST be between 60 and 70.
 2. If a debater uses solid reasoning/metrics calmly, score them between 80 and 95.
 
-Respond STRICTLY with JSON ONLY: {"pro": <number>, "opp": <number>}`;
+Respond STRICTLY with JSON ONLY. Do NOT wrap in \`\`\`json: {"pro": <number>, "opp": <number>}`;
 
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
@@ -641,22 +656,23 @@ Respond STRICTLY with JSON ONLY: {"pro": <number>, "opp": <number>}`;
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text, topic, language = 'Hindi' } = body;
-      const prompt = `You are an expert, UNBIASED Debate Moderator. Analyze this statement (written in ${language}) for GENUINE logical fallacies ONLY.
+      // 🔥 FIX 3: Lenient Fallacy Rules (No more crazy emotion penalties)
+      const prompt = `You are an expert, UNBIASED Debate Moderator. Analyze this statement (written in ${language}) for GENUINE logical fallacies.
 Topic: "${topic}"
 Statement: "${text}"
 
 CRITICAL DEBATE RULES:
-1. A normal argumentative claim (e.g. "X will replace Y") is NOT a fallacy.
+1. Being passionate, confident, or assertive is NOT a fallacy. Do NOT flag normal debate rhetoric.
 2. ONLY flag a GENUINE fallacy if the statement meets a HIGH bar:
-   - Ad Hominem -> Penalty: 10
-   - Strawman -> Penalty: 8
-   - Appeal to Fear / Existential Threat (uses exaggerated, catastrophic, alarmist language SPECIFICALLY to bypass logic) -> Penalty: 5
-   - Appeal to Emotion -> Penalty: 5
-3. If in doubt, set "hasFallacy": false and "penalty": 0. 
+   - Ad Hominem (Personal insults) -> Penalty: 10
+   - Strawman (Completely making up fake arguments) -> Penalty: 8
+   - Appeal to Fear (Pure fear-mongering with ZERO logic) -> Penalty: 5
+3. IMPORTANT: "Appeal to Emotion" should ONLY be flagged if the argument has absolutely ZERO logic/facts and relies SOLELY on making people cry or angry. If they use logic + passion, DO NOT flag it.
+4. Default to "hasFallacy": false in 95% of cases.
 
 Calculate 'Aggression Score' (0-100) and 'Logic Score' (0-100).
 
-Respond STRICTLY with JSON ONLY:
+Respond STRICTLY with a RAW JSON object. DO NOT wrap in \`\`\`json.
 {"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation strictly in ${language}", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
 
       const { text: result } = await generateText({
