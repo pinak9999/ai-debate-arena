@@ -17,12 +17,11 @@ interface HeroSectionProps {
 
 const EXAMPLES = {
   topic: [
-    'AI will replace human creativity entirely',
+    'AI will replace human creativity',
     'Universal Basic Income is net positive',
     'Social media does more harm than good',
-    'Space colonisation is humanity\'s priority',
   ],
-  stock: ['SUZLON.NS', 'TATAMOTORS.NS', 'RELIANCE.NS', 'IRFC.NS', 'ZOMATO.NS'],
+  stock: ['SUZLON.NS', 'TATAMOTORS.NS', 'RELIANCE.NS', 'IRFC.NS'],
   personality: [
     'Should the death penalty be abolished?',
     'Is capitalism the best economic system?',
@@ -37,12 +36,12 @@ const TICKER_ITEMS = [
 
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
-  visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
+  visible: { opacity: 1, transition: { staggerChildren: 0.05 } },
 };
 
 const itemVariants: Variants = {
-  hidden: { opacity: 0, y: 20 },
-  visible: { opacity: 1, y: 0, transition: { duration: 0.5, ease: 'easeOut' } },
+  hidden: { opacity: 0, y: 15 },
+  visible: { opacity: 1, y: 0, transition: { duration: 0.4, ease: 'easeOut' } },
 };
 
 export default function HeroSection({ onStart, mode, setMode, selectedLang, setSelectedLang, disabled }: HeroSectionProps) {
@@ -70,19 +69,18 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
 
   // Theme dynamic colors
   const themeColors = isStock 
-    ? { glow: 'from-emerald-400 to-teal-600', border: 'border-emerald-500/50', bg: 'bg-emerald-500', shadow: 'shadow-[0_0_20px_rgba(52,211,153,0.3)]' }
+    ? { glow: 'from-emerald-400 to-teal-600', border: 'border-emerald-500/50', bg: 'bg-emerald-500', text: 'text-emerald-400', shadow: 'shadow-[0_0_20px_rgba(52,211,153,0.2)]' }
     : isPersonality 
-    ? { glow: 'from-amber-400 to-orange-600', border: 'border-amber-500/50', bg: 'bg-amber-500', shadow: 'shadow-[0_0_20px_rgba(245,158,11,0.3)]' }
-    : { glow: 'from-cyan-400 to-blue-600', border: 'border-cyan-500/50', bg: 'bg-blue-600', shadow: 'shadow-[0_0_20px_rgba(0,212,255,0.3)]' };
+    ? { glow: 'from-amber-400 to-orange-600', border: 'border-amber-500/50', bg: 'bg-amber-500', text: 'text-amber-400', shadow: 'shadow-[0_0_20px_rgba(245,158,11,0.2)]' }
+    : { glow: 'from-cyan-400 to-blue-600', border: 'border-cyan-500/50', bg: 'bg-blue-600', text: 'text-cyan-400', shadow: 'shadow-[0_0_20px_rgba(0,212,255,0.2)]' };
 
   return (
     <motion.div
-      className="w-full h-screen flex flex-col justify-between items-center relative z-10 overflow-hidden bg-[#050810]"
+      className="w-full h-[100dvh] flex flex-col justify-between items-center relative z-10 overflow-hidden bg-[#050810]"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
     >
-      {/* ── CSS for Gradient Animation ── */}
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes gradient-x {
           0%, 100% { background-position: 0% 50%; }
@@ -98,23 +96,23 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
         }
       `}} />
 
-      {/* ── Background Glow Effects ── */}
+      {/* ── Background Glow ── */}
       <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-        <div className="absolute top-[-10%] left-[10%] w-[500px] h-[500px] bg-blue-600/20 rounded-full blur-[120px] mix-blend-screen animate-pulse" />
-        <div className="absolute bottom-[-10%] right-[10%] w-[400px] h-[400px] bg-purple-600/20 rounded-full blur-[100px] mix-blend-screen animate-pulse delay-1000" />
+        <div className="absolute top-[-10%] left-[10%] w-[40vw] h-[40vh] bg-blue-600/15 rounded-full blur-[100px] mix-blend-screen animate-pulse" />
+        <div className="absolute bottom-[-10%] right-[10%] w-[30vw] h-[30vh] bg-purple-600/15 rounded-full blur-[80px] mix-blend-screen animate-pulse delay-1000" />
       </div>
 
-      {/* ── Top Bar (Spectator & Language) ── */}
-      <motion.div variants={itemVariants} className="w-full max-w-7xl flex items-center justify-between z-20 px-6 pt-6">
+      {/* ── Top Bar ── */}
+      <motion.div variants={itemVariants} className="w-full max-w-6xl flex items-center justify-between z-20 px-4 pt-3 pb-1">
         <ModeToggle mode={mode} setMode={setMode} disabled={disabled} />
         
-        <div className="flex items-center gap-3 bg-white/5 border border-white/10 rounded-full px-5 py-2 backdrop-blur-md">
-          <span className="text-[10px] font-bold text-gray-400 uppercase tracking-widest hidden sm:block">Language</span>
+        <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-md">
+          <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest hidden sm:block">Language</span>
           <div className="h-3 w-px bg-white/20 hidden sm:block" />
           <select 
             value={selectedLang} 
             onChange={(e) => setSelectedLang(e.target.value as DebateLanguage)}
-            className="bg-transparent text-white text-xs uppercase tracking-widest cursor-pointer outline-none font-bold appearance-none"
+            className="bg-transparent text-white text-[10px] uppercase tracking-widest cursor-pointer outline-none font-bold appearance-none"
           >
             <option value="English" className="bg-[#0a0f1a]">ENGLISH</option>
             <option value="Hindi" className="bg-[#0a0f1a]">HINDI (हिंदी)</option>
@@ -130,83 +128,78 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
         </div>
       </motion.div>
 
-      {/* ── Main Hero Content ── */}
-      <div className="w-full max-w-3xl flex flex-col items-center justify-center z-10 flex-1 px-4">
+      {/* ── Main Content ── */}
+      <div className="w-full max-w-3xl flex flex-col items-center justify-center z-10 flex-1 px-4 py-2">
         
         {/* Title */}
-        <motion.div variants={itemVariants} className="text-center mb-8">
-          <span className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-[10px] font-bold tracking-widest uppercase border border-blue-500/20 mb-4">
+        <motion.div variants={itemVariants} className="text-center mb-4">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-[9px] font-bold tracking-widest uppercase border border-blue-500/20 mb-2">
             <Brain className="w-3 h-3 animate-pulse" /> Live AI Engine
           </span>
-          <h1 className="font-orbitron font-black uppercase leading-[0.9] tracking-tighter text-[clamp(40px,8vw,80px)]">
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-cyan-400 animate-gradient-x block drop-shadow-[0_0_15px_rgba(0,212,255,0.3)]">
+          <h1 className="font-orbitron font-black uppercase leading-[0.9] tracking-tighter text-[clamp(36px,6vw,64px)]">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-cyan-400 animate-gradient-x block drop-shadow-[0_0_10px_rgba(0,212,255,0.3)]">
               AI DEBATE
             </span>
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-pink-500 animate-gradient-x block drop-shadow-[0_0_15px_rgba(236,72,153,0.3)]">
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-pink-500 via-purple-500 to-pink-500 animate-gradient-x block drop-shadow-[0_0_10px_rgba(236,72,153,0.3)]">
               ARENA
             </span>
           </h1>
         </motion.div>
 
-        {/* ── Ultra Clean Cyberpunk Card ── */}
+        {/* ── Compact Card ── */}
         <motion.div variants={itemVariants} className="w-full">
-          <div className="relative bg-white/[0.03] border border-white/10 rounded-[24px] p-6 md:p-8 backdrop-blur-xl shadow-[0_0_40px_rgba(0,0,0,0.5)]">
+          <div className="relative bg-white/[0.03] border border-white/10 rounded-3xl p-5 backdrop-blur-xl shadow-[0_0_30px_rgba(0,0,0,0.5)]">
             
-            {/* Subject Tabs */}
-            <div className="flex p-1 bg-black/40 border border-white/5 rounded-2xl mb-6">
+            {/* Tabs */}
+            <div className="flex p-1 bg-black/40 border border-white/5 rounded-xl mb-4">
               <button
                 onClick={() => { setSubject('topic'); setTopic(''); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[11px] font-bold tracking-widest uppercase transition-all ${
-                  subject === 'topic' ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.5)]' : 'text-gray-500 hover:text-gray-300'
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all ${
+                  subject === 'topic' ? 'bg-blue-600 text-white shadow-[0_0_10px_rgba(37,99,235,0.5)]' : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
-                <Target className="w-4 h-4" /> Topic
+                <Target className="w-3.5 h-3.5" /> Topic
               </button>
               <button
                 onClick={() => { setSubject('stock'); setTopic(''); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[11px] font-bold tracking-widest uppercase transition-all ${
-                  isStock ? 'bg-emerald-500 text-white shadow-[0_0_15px_rgba(16,185,129,0.5)]' : 'text-gray-500 hover:text-gray-300'
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all ${
+                  isStock ? 'bg-emerald-500 text-white shadow-[0_0_10px_rgba(16,185,129,0.5)]' : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
-                <TrendingUp className="w-4 h-4" /> Stock
+                <TrendingUp className="w-3.5 h-3.5" /> Stock
               </button>
               <button
                 onClick={() => { setSubject('personality'); setTopic(''); }}
-                className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[11px] font-bold tracking-widest uppercase transition-all ${
-                  isPersonality ? 'bg-amber-500 text-white shadow-[0_0_15px_rgba(245,158,11,0.5)]' : 'text-gray-500 hover:text-gray-300'
+                className={`flex-1 flex items-center justify-center gap-1.5 py-2 rounded-lg text-[10px] font-bold tracking-widest uppercase transition-all ${
+                  isPersonality ? 'bg-amber-500 text-white shadow-[0_0_10px_rgba(245,158,11,0.5)]' : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
-                <Flame className="w-4 h-4" /> Personality
+                <Flame className="w-3.5 h-3.5" /> Personality
               </button>
             </div>
 
-            {/* Input Area */}
-            <div className="mb-6 relative group">
-              <div className={`absolute -inset-0.5 bg-gradient-to-r ${themeColors.glow} rounded-2xl blur opacity-20 group-hover:opacity-40 transition duration-500`} />
+            {/* Input */}
+            <div className="mb-4 relative group">
+              <div className={`absolute -inset-0.5 bg-gradient-to-r ${themeColors.glow} rounded-xl blur opacity-20 group-hover:opacity-40 transition duration-500`} />
               <textarea
                 ref={textareaRef}
                 value={topic}
                 onChange={(e) => setTopic(isStock ? e.target.value.toUpperCase() : e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isStock ? 'e.g. SUZLON.NS (Add .NS for NSE)' : isPersonality ? 'Enter a philosophical or ethical topic...' : 'Enter any controversial statement or debate topic...'}
+                placeholder={isStock ? 'e.g. SUZLON.NS (Add .NS for NSE)' : isPersonality ? 'Enter a philosophical topic...' : 'Enter a debate topic...'}
                 rows={isStock ? 1 : 2}
-                className={`relative w-full bg-[#0a0f1a] border border-white/10 rounded-xl px-5 py-4 text-white placeholder-gray-600 text-sm outline-none resize-none transition-all duration-300 focus:${themeColors.border}`}
+                className={`relative w-full bg-[#0a0f1a] border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 text-[13px] outline-none resize-none transition-all duration-300 focus:${themeColors.border}`}
               />
-              {!isStock && (
-                <div className="absolute bottom-3 right-4 text-[10px] text-gray-600 font-mono hidden sm:block">
-                  Press ⌘ + ↵ to start
-                </div>
-              )}
             </div>
 
-            {/* Quick Examples */}
-            <div className="mb-8">
-              <div className="flex flex-wrap gap-2">
+            {/* Quick Examples (Single Line Horizontal Scroll for compactness) */}
+            <div className="mb-5 overflow-x-auto whitespace-nowrap pb-1 scrollbar-hide">
+              <div className="flex gap-2">
                 {examples.map((t) => (
                   <button
                     key={t}
                     onClick={() => setTopic(t)}
-                    className="text-[10px] px-3 py-1.5 rounded-lg border border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white transition-all cursor-pointer font-medium tracking-wide"
+                    className="inline-block text-[9.5px] px-3 py-1.5 rounded-md border border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white transition-all cursor-pointer font-medium tracking-wide"
                   >
                     {t}
                   </button>
@@ -214,27 +207,24 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
               </div>
             </div>
 
-            {/* Footer: Rounds + Start Button */}
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-6 border-t border-white/10">
+            {/* Footer: Rounds + Start Button Side-by-side */}
+            <div className="flex items-center justify-between gap-3 pt-4 border-t border-white/10">
               
               {/* Rounds */}
-              <div className="flex items-center gap-3 w-full sm:w-auto bg-black/30 p-1.5 rounded-xl border border-white/5">
-                <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest pl-2">Rounds:</span>
-                <div className="flex gap-1">
-                  {([3, 5, 7] as const).map((r) => (
-                    <button
-                      key={r}
-                      onClick={() => setRounds(r)}
-                      className={`px-4 py-1.5 rounded-lg text-xs font-bold font-orbitron transition-all ${
-                        rounds === r 
-                          ? 'bg-white/15 text-white' 
-                          : 'text-gray-500 hover:text-gray-300'
-                      }`}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
+              <div className="flex items-center bg-black/30 p-1 rounded-xl border border-white/5">
+                {([3, 5, 7] as const).map((r) => (
+                  <button
+                    key={r}
+                    onClick={() => setRounds(r)}
+                    className={`px-3 py-1.5 rounded-lg text-[11px] font-bold font-orbitron transition-all ${
+                      rounds === r 
+                        ? 'bg-white/15 text-white' 
+                        : 'text-gray-500 hover:text-gray-300'
+                    }`}
+                  >
+                    {r} R
+                  </button>
+                ))}
               </div>
 
               {/* Start Button */}
@@ -243,7 +233,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
                 disabled={!canStart}
                 whileHover={canStart ? { scale: 1.02 } : {}}
                 whileTap={canStart ? { scale: 0.98 } : {}}
-                className={`w-full sm:w-auto px-8 py-3.5 rounded-xl font-orbitron font-bold text-xs tracking-widest uppercase flex items-center justify-center gap-2 transition-all duration-300 ${
+                className={`flex-1 py-2.5 rounded-xl font-orbitron font-bold text-[11px] tracking-widest uppercase flex items-center justify-center gap-2 transition-all duration-300 ${
                   canStart 
                     ? `${themeColors.bg} text-white ${themeColors.shadow} cursor-pointer` 
                     : 'bg-white/5 text-gray-600 border border-white/10 cursor-not-allowed'
@@ -251,12 +241,12 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
               >
                 {launching ? (
                   <span className="flex items-center gap-2 animate-pulse">
-                    <Sparkles className="w-4 h-4" /> Initializing...
+                    <Sparkles className="w-3.5 h-3.5" /> Launching...
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 fill-current" />
-                    {isStock ? 'Launch War-Room' : 'Start Debate'}
+                    <Zap className="w-3.5 h-3.5 fill-current" />
+                    {isStock ? 'War-Room' : 'Start'}
                   </span>
                 )}
               </motion.button>
@@ -267,17 +257,22 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
 
       </div>
 
-      {/* ── Marquee Ticker Tape at Bottom ── */}
-      <motion.div variants={itemVariants} className="w-full overflow-hidden border-t border-b border-white/10 py-2.5 relative z-10 bg-black/20 [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_92%,transparent)]">
+      {/* ── Ticker Tape ── */}
+      <motion.div variants={itemVariants} className="w-full overflow-hidden border-t border-white/10 py-1.5 relative z-10 bg-black/20">
         <div className="flex w-max gap-8 animate-[marquee_20s_linear_infinite]">
           {[...TICKER_ITEMS, ...TICKER_ITEMS, ...TICKER_ITEMS].map((item, idx) => (
-            <span key={idx} className="font-mono text-[10px] tracking-widest uppercase text-gray-500 whitespace-nowrap flex items-center gap-2">
-              <b className="text-blue-500">◆</b> {item}
+            <span key={idx} className="font-mono text-[9px] tracking-widest uppercase text-gray-500 whitespace-nowrap flex items-center gap-2">
+              <b className={themeColors.text}>◆</b> {item}
             </span>
           ))}
         </div>
       </motion.div>
 
+      {/* Hide scrollbar utility for examples */}
+      <style dangerouslySetInnerHTML={{__html: `
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+      `}} />
     </motion.div>
   );
 }
