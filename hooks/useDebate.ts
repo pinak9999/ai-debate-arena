@@ -110,9 +110,11 @@ export interface AgentLog {
   type: 'info' | 'fact' | 'fallacy' | 'judge' | 'system' | 'ui_render';
 }
 
+// 🔥 FIX: Added 'total' to AudienceScore
 export interface AudienceScore {
   pro: number;
   opp: number;
+  total: number;
 }
 
 export type Speaker = 'proponent' | 'opponent' | 'judge';
@@ -187,8 +189,6 @@ function extractUIArtifact(rawText: string): { cleanText: string; uiArtifact: UI
   return { cleanText, uiArtifact };
 }
 
-// Helper: loop ke andar baar-baar Promise banane se ESLint (no-loop-func) aur
-// TS void-return mismatch errors aate the — isliye ek clean reusable helper.
 function waitWithAbort(signal: AbortSignal, ms?: number): Promise<void> {
   return new Promise<void>((resolve) => {
     if (signal.aborted) {
@@ -223,6 +223,12 @@ export function useDebate(): UseDebateReturn {
   const [topic, setTopic] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // 🔥 FIX: Topic ref for accurate querying in setInterval/websockets
+  const topicRef = useRef<string>('');
+  useEffect(() => {
+    topicRef.current = topic;
+  }, [topic]);
+
   const [scoreHistory, setScoreHistory] = useState<ScorePoint[]>([]);
   const [mode, setMode] = useState<DebateMode>('spectator');
   const [waitingForPlayer, setWaitingForPlayer] = useState(false);
@@ -233,9 +239,11 @@ export function useDebate(): UseDebateReturn {
   const [factCheckLoading, setFactCheckLoading] = useState<Record<string, boolean>>({});
 
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
-  const [audienceScore, setAudienceScore] = useState<AudienceScore>({ pro: 50, opp: 50 });
-
-  const audienceScoreRef = useRef<AudienceScore>({ pro: 50, opp: 50 });
+  
+  // 🔥 FIX: Start with total: 0
+  const [audienceScore, setAudienceScore] = useState<AudienceScore>({ pro: 50, opp: 50, total: 0 });
+  const audienceScoreRef = useRef<AudienceScore>({ pro: 50, opp: 50, total: 0 });
+  
   useEffect(() => {
     audienceScoreRef.current = audienceScore;
   }, [audienceScore]);
@@ -258,8 +266,6 @@ export function useDebate(): UseDebateReturn {
   const abortControllerRef = useRef<AbortController | null>(null);
   const streamingTextRef = useRef('');
 
-  // 🔥 FIX: Smart Polling ke liye interval ref — Realtime WebSocket fail/late ho
-  // to bhi ye har VOTE_POLL_INTERVAL_MS pe DB se fresh votes khींch layega.
   const votePollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const { speak, stop: stopSpeech, isSpeaking, isMuted, toggleMute } = useSpeech();
@@ -268,38 +274,42 @@ export function useDebate(): UseDebateReturn {
     setAgentLogs((prev) => [...prev, { id: generateId(), timestamp: Date.now(), text, type }]);
   }, []);
 
-  // 🔥 FIX: "Smart Polling + All Round Fallback"
-  // 1. Pehle activeRound ke votes count karta hai.
-  // 2. Agar activeRound ke votes 0 hain lekin table mein total votes maujood hain,
-  //    to fallback karke saare votes (Total) count karke dikha deta hai —
-  //    isse progress bar kabhi bhi hamesha ke liye 50/50 pe atka nahi rahega.
+  // 🔥 FIX: Topic Filtering & 0-Vote Handling
   const syncLiveVotes = useCallback(async () => {
     const activeRound = currentRoundRef.current;
+    const currentTopic = topicRef.current;
+
+    if (!currentTopic) return;
+
     try {
-      const { data, error: voteError } = await supabase.from('votes').select('side, round_number');
+      const { data, error: voteError } = await supabase
+        .from('votes')
+        .select('side')
+        .eq('round_number', activeRound)
+        .eq('topic', currentTopic);
 
       if (voteError) {
         addLog(`[Live Vote] Poll error: ${voteError.message}`, 'system');
         return;
       }
 
-      // 🔥 FIX: Ab "fallback to all rounds" hata diya — sirf CURRENT round ke
-      // votes hi count honge. Jab tak is round pe koi vote nahi padta, score
-      // 50/50 (dummy default) hi rahega. Pehla vote padte hi seedha usi vote ke
-      // hisaab se jump karega (e.g. 1 vote proponent ko = turant 100/0),
-      // kyunki purane/doosre round ke votes ab dilute nahi karenge.
-      const roundVotes = (data || []).filter((v) => Number(v.round_number) === Number(activeRound));
-      const total = roundVotes.length;
-      const proVotes = roundVotes.filter((v) => v.side === 'proponent').length;
-      const proPercentage = total > 0 ? Math.round((proVotes / total) * 100) : 50;
-      const oppPercentage = 100 - proPercentage;
+      const total = data ? data.length : 0;
+      
+      let proPercentage = 50;
+      let oppPercentage = 50;
 
-      const nextScore = { pro: proPercentage, opp: oppPercentage };
+      if (total > 0) {
+        const proVotes = data!.filter((v) => v.side === 'proponent').length;
+        proPercentage = Math.round((proVotes / total) * 100);
+        oppPercentage = 100 - proPercentage;
+      }
 
-      // Sirf tab update karo jab value badli ho — bekaar re-renders se bachne ke liye
+      const nextScore = { pro: proPercentage, opp: oppPercentage, total };
+
       if (
         audienceScoreRef.current.pro !== nextScore.pro ||
-        audienceScoreRef.current.opp !== nextScore.opp
+        audienceScoreRef.current.opp !== nextScore.opp ||
+        audienceScoreRef.current.total !== nextScore.total
       ) {
         setAudienceScore(nextScore);
         audienceScoreRef.current = nextScore;
@@ -309,7 +319,7 @@ export function useDebate(): UseDebateReturn {
         );
       }
     } catch (e) {
-      // silent fail — agla poll try karega
+      // silent fail
     }
   }, [addLog]);
 
@@ -322,14 +332,12 @@ export function useDebate(): UseDebateReturn {
 
   const startVotePolling = useCallback(() => {
     stopVotePolling();
-    // pehla sync turant, phir har interval pe
     void syncLiveVotes();
     votePollIntervalRef.current = setInterval(() => {
       void syncLiveVotes();
     }, VOTE_POLL_INTERVAL_MS);
   }, [stopVotePolling, syncLiveVotes]);
 
-  // Component unmount hone par polling zaroor band ho
   useEffect(() => {
     return () => {
       stopVotePolling();
@@ -350,6 +358,7 @@ export function useDebate(): UseDebateReturn {
     setCurrentSpeaker(null);
     setScores(null);
     setTopic('');
+    topicRef.current = '';
     setError(null);
     setScoreHistory([]);
     setWaitingForPlayer(false);
@@ -357,8 +366,8 @@ export function useDebate(): UseDebateReturn {
     setFactChecks({});
     setFactCheckLoading({});
     setAgentLogs([]);
-    setAudienceScore({ pro: 50, opp: 50 });
-    audienceScoreRef.current = { pro: 50, opp: 50 };
+    setAudienceScore({ pro: 50, opp: 50, total: 0 });
+    audienceScoreRef.current = { pro: 50, opp: 50, total: 0 };
     setSubject('topic');
     setStockData(null);
     setStockLoading(false);
@@ -664,7 +673,10 @@ export function useDebate(): UseDebateReturn {
       setLanguage(debateLanguage);
       languageRef.current = debateLanguage;
 
+      // 🔥 FIX: Set Topic and Ref immediately
       setTopic(config.topic);
+      topicRef.current = config.topic;
+      
       setTotalRounds(config.totalRounds);
       setStatus('debating');
       setMessages([]);
@@ -674,8 +686,11 @@ export function useDebate(): UseDebateReturn {
       setFallacies({});
       setFactChecks({});
       setAgentLogs([]);
-      setAudienceScore({ pro: 50, opp: 50 });
-      audienceScoreRef.current = { pro: 50, opp: 50 };
+      
+      // 🔥 FIX: Reset total to 0
+      setAudienceScore({ pro: 50, opp: 50, total: 0 });
+      audienceScoreRef.current = { pro: 50, opp: 50, total: 0 };
+      
       setSubject(subjectMode);
       setStockData(null);
       streamingTextRef.current = '';
@@ -704,10 +719,6 @@ export function useDebate(): UseDebateReturn {
       supabase.removeAllChannels();
       addLog(`[System] Establishing Realtime connection for Live Class Voting...`, 'system');
 
-      // Realtime listener — jab bhi naya vote insert ho, turant sync try karo.
-      // Lekin ismein calculation ka poora logic duplicate nahi karte —
-      // seedha syncLiveVotes() ko call karte hain (single source of truth),
-      // jisme already "All Round Fallback" bhi built-in hai.
       const voteChannel = supabase
         .channel('realtime_votes')
         .on(
@@ -725,8 +736,6 @@ export function useDebate(): UseDebateReturn {
           }
         });
 
-      // 🔥 FIX: Smart Polling shuru — Realtime WebSocket kabhi miss/late ho
-      // to bhi har 2.5s me DB se fresh vote counts aa jaayenge.
       startVotePolling();
 
       const committedMessages: DebateMessage[] = [];

@@ -290,7 +290,8 @@ interface DebateArenaProps {
   factCheckLoading:   Record<string, boolean>;
   scores:             JudgeScores | null;
   agentLogs?:         AgentLog[];
-  audienceScore?:     { pro: number; opp: number };
+  // 🔥 FIX: Added 'total' to the audienceScore type
+  audienceScore?:     { pro: number; opp: number; total: number };
   subject?:           DebateSubject;
   stockData?:         StockData | null;
   stockLoading?:      boolean;
@@ -314,7 +315,8 @@ export default function DebateArena(props: DebateArenaProps) {
     factCheckLoading = {},
     scores,
     agentLogs = [],
-    audienceScore = { pro: 50, opp: 50 },
+    // 🔥 FIX: Initialized with total: 0
+    audienceScore = { pro: 50, opp: 50, total: 0 },
     subject = 'topic',
     stockData = null,
     stockLoading = false,
@@ -396,7 +398,10 @@ export default function DebateArena(props: DebateArenaProps) {
 
               <div className="flex items-center gap-2 mb-3 text-white/80">
                 <Users className="w-4 h-4 text-emerald-400" />
-                <span className="text-[10px] uppercase tracking-widest font-bold">Live Class Vote</span>
+                {/* 🔥 FIX: Displaying Total Votes here conditionally */}
+                <span className="text-[10px] uppercase tracking-widest font-bold">
+                  Live Class Vote {audienceScore.total > 0 ? `(${audienceScore.total} Votes)` : ''}
+                </span>
               </div>
 
               {/* QR Code */}
