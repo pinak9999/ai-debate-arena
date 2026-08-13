@@ -1,11 +1,37 @@
 'use client';
 
-import { useState, useRef, type KeyboardEvent } from 'react';
-import { motion, AnimatePresence, type Variants } from 'framer-motion';
-import { Zap, Brain, Swords, ChevronDown, TrendingUp, Target, Flame } from 'lucide-react';
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type CSSProperties,
+  type KeyboardEvent,
+} from 'react';
+import { AnimatePresence, motion, type Variants } from 'framer-motion';
+import {
+  ArrowRight,
+  Brain,
+  ChevronDown,
+  Flame,
+  Gauge,
+  Layers3,
+  LineChart,
+  Lock,
+  Sparkles,
+  Swords,
+  Target,
+  TrendingUp,
+  Trophy,
+  Zap,
+} from 'lucide-react';
 
 interface HeroSectionProps {
-  onStart: (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality') => void;
+  onStart: (
+    input: string,
+    rounds: number,
+    subject: 'topic' | 'stock' | 'personality'
+  ) => void;
 }
 
 const EXAMPLE_TOPICS = [
@@ -28,329 +54,992 @@ const EXAMPLE_TICKERS = [
 const EXAMPLE_PERSONALITY_TOPICS = [
   'Should the death penalty be abolished worldwide?',
   'Is capitalism the best economic system for humanity?',
-  'Should AI be allowed to make life-or-death medical decisions?',
-  'Is space exploration justified while poverty exists on Earth?',
+  'Should AI make life-or-death medical decisions?',
+  'Is space exploration justified while poverty exists?',
   'Should social media be banned for under-18s?',
 ];
+
+const ease = [0.16, 1, 0.3, 1] as const;
 
 const containerVariants: Variants = {
   hidden: { opacity: 0 },
   visible: {
     opacity: 1,
-    transition: { staggerChildren: 0.12, delayChildren: 0.1 },
+    transition: { staggerChildren: 0.07, delayChildren: 0.08 },
   },
-  exit: { opacity: 0, scale: 0.96, transition: { duration: 0.35 } },
 };
 
 const itemVariants: Variants = {
-  hidden:   { opacity: 0, y: 28 },
-  visible:  { opacity: 1, y: 0, transition: { duration: 0.55, ease: [0.16, 1, 0.3, 1] } },
+  hidden: { opacity: 0, y: 22 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: { duration: 0.65, ease },
+  },
+};
+
+const glass: CSSProperties = {
+  background:
+    'linear-gradient(145deg, rgba(16,24,42,.78), rgba(6,10,22,.72))',
+  border: '1px solid rgba(255,255,255,.09)',
+  boxShadow:
+    '0 30px 90px rgba(0,0,0,.48), inset 0 1px 0 rgba(255,255,255,.055)',
+  backdropFilter: 'blur(24px)',
+  WebkitBackdropFilter: 'blur(24px)',
 };
 
 export default function HeroSection({ onStart }: HeroSectionProps) {
-  const [subject,    setSubject]    = useState<'topic' | 'stock' | 'personality'>('topic');
-  const [topic,      setTopic]      = useState('');
-  const [rounds,     setRounds]     = useState(3);
-  const [launching,  setLaunching]  = useState(false);
+  const [subject, setSubject] = useState<'topic' | 'stock' | 'personality'>('topic');
+  const [topic, setTopic] = useState('');
+  const [rounds, setRounds] = useState(3);
+  const [launching, setLaunching] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const updateViewport = () => setIsMobile(window.innerWidth <= 760);
+    updateViewport();
+    window.addEventListener('resize', updateViewport);
+    return () => window.removeEventListener('resize', updateViewport);
+  }, []);
 
   const isStock = subject === 'stock';
   const isPersonality = subject === 'personality';
-  const examples = isStock ? EXAMPLE_TICKERS : isPersonality ? EXAMPLE_PERSONALITY_TOPICS : EXAMPLE_TOPICS;
 
-  const handleStart = () => {
-    if (!topic.trim() || launching) return;
-    setLaunching(true);
-    setTimeout(() => onStart(topic.trim(), rounds, subject), 400);
-  };
+  const theme = useMemo(() => {
+    if (isStock) {
+      return {
+        accent: '#43f0a4',
+        accent2: '#22c55e',
+        rgb: '67,240,164',
+        soft: 'rgba(67,240,164,.12)',
+        gradient: 'linear-gradient(135deg,#43f0a4 0%,#22c55e 48%,#06b6d4 100%)',
+        label: 'MARKET WAR-ROOM',
+        icon: TrendingUp,
+      };
+    }
 
-  const handleKeyDown = (e: KeyboardEvent) => {
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleStart();
-  };
+    if (isPersonality) {
+      return {
+        accent: '#ffbd5c',
+        accent2: '#ff4d7d',
+        rgb: '255,189,92',
+        soft: 'rgba(255,189,92,.12)',
+        gradient: 'linear-gradient(135deg,#ffbd5c 0%,#ff4d7d 52%,#a855f7 100%)',
+        label: 'PERSONALITY CLASH',
+        icon: Flame,
+      };
+    }
+
+    return {
+      accent: '#54d9ff',
+      accent2: '#9b6cff',
+      rgb: '84,217,255',
+      soft: 'rgba(84,217,255,.12)',
+      gradient: 'linear-gradient(135deg,#54d9ff 0%,#6877ff 50%,#d24cff 100%)',
+      label: 'TOPIC DEBATE',
+      icon: Target,
+    };
+  }, [isPersonality, isStock]);
+
+  const examples = isStock
+    ? EXAMPLE_TICKERS
+    : isPersonality
+      ? EXAMPLE_PERSONALITY_TOPICS
+      : EXAMPLE_TOPICS;
 
   const canStart = topic.trim().length > 0 && !launching;
 
+  const handleStart = () => {
+    if (!canStart) return;
+    setLaunching(true);
+    setTimeout(() => onStart(topic.trim(), rounds, subject), 500);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleStart();
+    }
+  };
+
+  const particles = useMemo(
+    () =>
+      Array.from({ length: 22 }, (_, i) => ({
+        left: `${(i * 37) % 101}%`,
+        top: `${(i * 61) % 100}%`,
+        size: i % 5 === 0 ? 3 : 1.5,
+        duration: 4 + (i % 5),
+        delay: (i % 7) * 0.35,
+      })),
+    []
+  );
+
+  const TabIcon = theme.icon;
+
   return (
-    <motion.div
-      className="relative min-h-screen flex flex-col items-center justify-center px-4 py-20 z-10"
-      variants={containerVariants}
+    <motion.main
       initial="hidden"
       animate="visible"
       exit="exit"
+      variants={containerVariants}
+      style={{
+        minHeight: '100dvh',
+        width: '100%',
+        position: 'relative',
+        overflow: 'hidden',
+        display: 'flex',
+        justifyContent: 'center',
+        color: '#fff',
+        background:
+          'radial-gradient(circle at 50% 10%, rgba(71,94,180,.17), transparent 28%), radial-gradient(circle at 15% 60%, rgba(0,212,255,.07), transparent 25%), radial-gradient(circle at 85% 70%, rgba(173,70,255,.07), transparent 25%), #03060d',
+        fontFamily:
+          'Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+      }}
     >
-      {/* ── Badge row ───────────────────────────────────────────────────── */}
-      <motion.div variants={itemVariants} className="flex items-center gap-3 mb-8">
-        <div className="flex items-center gap-2 px-4 py-2 rounded-full border border-neon-blue/25 bg-neon-blue/8 backdrop-blur-sm">
-          <Brain  className="w-4 h-4 text-neon-blue animate-float" />
-          <span className="text-neon-blue text-xs font-semibold tracking-[0.25em] uppercase">
-            AI · Real-Time · Streaming
-          </span>
-          <Swords className="w-4 h-4 text-neon-purple" />
-        </div>
-      </motion.div>
+      {/* Ambient animated background */}
+      <div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          inset: 0,
+          pointerEvents: 'none',
+          backgroundImage:
+            'linear-gradient(rgba(255,255,255,.025) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.025) 1px, transparent 1px)',
+          backgroundSize: '52px 52px',
+          maskImage: 'linear-gradient(to bottom, black, transparent 85%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black, transparent 85%)',
+        }}
+      />
 
-      {/* ── Main title ──────────────────────────────────────────────────── */}
-      <motion.div variants={itemVariants} className="text-center mb-5">
-        <h1
-          className="font-orbitron font-black leading-[0.9] tracking-tighter"
-          style={{ fontSize: 'clamp(3rem, 10vw, 7.5rem)' }}
-        >
-          <span
-            style={{
-              background: 'linear-gradient(135deg, #ffffff 0%, #00d4ff 45%, #bf5af2 75%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              filter: 'drop-shadow(0 0 28px rgba(0,212,255,0.35))',
-              display: 'block',
-            }}
-          >
-            AI DEBATE
-          </span>
-          <span
-            style={{
-              background: 'linear-gradient(135deg, #ff2d55 0%, #bf5af2 45%, #00d4ff 100%)',
-              WebkitBackgroundClip: 'text',
-              WebkitTextFillColor: 'transparent',
-              backgroundClip: 'text',
-              filter: 'drop-shadow(0 0 28px rgba(191,90,242,0.35))',
-              display: 'block',
-            }}
-          >
-            ARENA
-          </span>
-        </h1>
-      </motion.div>
+      <motion.div
+        aria-hidden="true"
+        style={{
+          position: 'absolute',
+          width: 'min(720px, 90vw)',
+          height: 'min(720px, 90vw)',
+          borderRadius: '50%',
+          left: '50%',
+          top: '7%',
+          transform: 'translateX(-50%)',
+          background: `radial-gradient(circle, rgba(${theme.rgb},.10), transparent 66%)`,
+          filter: 'blur(18px)',
+          pointerEvents: 'none',
+        }}
+        animate={{ scale: [1, 1.08, 1], opacity: [0.65, 1, 0.65] }}
+        transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
+      />
 
-      {/* ── Subtitle ────────────────────────────────────────────────────── */}
-      <motion.p
-        variants={itemVariants}
-        className="text-white/35 text-center text-xs md:text-sm tracking-[0.22em] uppercase font-light mb-8 max-w-md"
-      >
-        Two AI agents · Structured rounds · Live SSE streaming · Judge scoring
-      </motion.p>
-
-      {/* ── Subject toggle: Topic / Stock / Personality ─────────────────── */}
-      <motion.div variants={itemVariants} className="flex flex-wrap justify-center gap-2 mb-6 p-1 rounded-full border border-white/10 bg-white/[0.03]">
-        <button
-          onClick={() => { setSubject('topic'); setTopic(''); }}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-[11px] font-bold tracking-wider uppercase transition-all duration-200 ${
-            subject === 'topic' ? 'bg-neon-blue/15 text-neon-blue border border-neon-blue/40' : 'text-white/35 hover:text-white/60'
-          }`}
-        >
-          <Target className="w-3.5 h-3.5" /> Topic Debate
-        </button>
-        <button
-          onClick={() => { setSubject('stock'); setTopic(''); }}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-[11px] font-bold tracking-wider uppercase transition-all duration-200 ${
-            isStock ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/40' : 'text-white/35 hover:text-white/60'
-          }`}
-        >
-          <TrendingUp className="w-3.5 h-3.5" /> Stock War-Room
-        </button>
-        <button
-          onClick={() => { setSubject('personality'); setTopic(''); }}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-full text-[11px] font-bold tracking-wider uppercase transition-all duration-200 ${
-            isPersonality ? 'bg-amber-500/15 text-amber-400 border border-amber-500/40' : 'text-white/35 hover:text-white/60'
-          }`}
-        >
-          <Flame className="w-3.5 h-3.5" /> Personality Clash
-        </button>
-      </motion.div>
-
-      {/* ── Main card ───────────────────────────────────────────────────── */}
-      <motion.div variants={itemVariants} className="w-full max-w-lg">
-        <div
-          className="glass rounded-2xl p-7 md:p-9 relative overflow-hidden"
+      {particles.map((p, i) => (
+        <motion.span
+          key={i}
+          aria-hidden="true"
           style={{
-            boxShadow: isStock
-              ? '0 0 0 1px rgba(52,211,153,0.08), 0 0 80px rgba(52,211,153,0.06), 0 0 140px rgba(255,45,85,0.04)'
-              : isPersonality
-              ? '0 0 0 1px rgba(245,158,11,0.08), 0 0 80px rgba(245,158,11,0.06), 0 0 140px rgba(239,68,68,0.04)'
-              : '0 0 0 1px rgba(255,255,255,0.05), 0 0 80px rgba(0,212,255,0.06), 0 0 140px rgba(191,90,242,0.04)',
+            position: 'absolute',
+            left: p.left,
+            top: p.top,
+            width: p.size,
+            height: p.size,
+            borderRadius: '50%',
+            background: i % 3 === 0 ? theme.accent : '#fff',
+            opacity: 0.16,
+            pointerEvents: 'none',
+          }}
+          animate={{
+            y: [-10, 10, -10],
+            opacity: [0.06, 0.28, 0.06],
+          }}
+          transition={{
+            duration: p.duration,
+            delay: p.delay,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        />
+      ))}
+
+      <div
+        style={{
+          width: '100%',
+          maxWidth: 1280,
+          padding: isMobile
+            ? '22px 12px 38px'
+            : 'clamp(28px, 5vw, 64px) clamp(16px, 4vw, 42px) 48px',
+          position: 'relative',
+          zIndex: 2,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+        }}
+      >
+        {/* Top status */}
+        <motion.div variants={itemVariants}>
+          <div
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: 9,
+              padding: '8px 13px',
+              borderRadius: 999,
+              border: `1px solid rgba(${theme.rgb},.22)`,
+              background: `rgba(${theme.rgb},.055)`,
+              boxShadow: `0 0 30px rgba(${theme.rgb},.07)`,
+              fontSize: 10,
+              fontWeight: 800,
+              letterSpacing: '.22em',
+              color: theme.accent,
+            }}
+          >
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: '50%',
+                background: theme.accent,
+                boxShadow: `0 0 12px ${theme.accent}`,
+              }}
+            />
+            LIVE AI ARENA
+            <span style={{ opacity: 0.35 }}>•</span>
+            REAL-TIME STREAMING
+          </div>
+        </motion.div>
+
+        {/* Hero */}
+        <motion.section
+          variants={itemVariants}
+          style={{
+            textAlign: 'center',
+            marginTop: 'clamp(22px, 4vw, 40px)',
+            maxWidth: 900,
           }}
         >
           <div
-            className="absolute inset-0 rounded-2xl pointer-events-none"
             style={{
-              background: isStock
-                ? 'linear-gradient(135deg, rgba(52,211,153,0.06) 0%, transparent 45%, rgba(255,45,85,0.06) 100%)'
-                : isPersonality
-                ? 'linear-gradient(135deg, rgba(245,158,11,0.06) 0%, transparent 45%, rgba(239,68,68,0.06) 100%)'
-                : 'linear-gradient(135deg, rgba(0,212,255,0.06) 0%, transparent 45%, rgba(191,90,242,0.06) 100%)',
+              fontSize: 'clamp(48px, 9vw, 118px)',
+              lineHeight: 0.82,
+              fontWeight: 950,
+              letterSpacing: '-.075em',
+              textTransform: 'uppercase',
+              filter: `drop-shadow(0 0 34px rgba(${theme.rgb},.12))`,
+            }}
+          >
+            <motion.span
+              style={{
+                display: 'block',
+                background: 'linear-gradient(105deg,#fff 4%,#bfefff 32%,#54d9ff 60%,#9b6cff 90%)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}
+              animate={{ backgroundPosition: ['0% 50%', '100% 50%', '0% 50%'] }}
+              transition={{ duration: 8, repeat: Infinity, ease: 'linear' }}
+            >
+              AI DEBATE
+            </motion.span>
+            <span
+              style={{
+                display: 'block',
+                marginTop: 8,
+                background: theme.gradient,
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
+              }}
+            >
+              ARENA
+            </span>
+          </div>
+
+          <p
+            style={{
+              margin: '24px auto 0',
+              maxWidth: 620,
+              color: 'rgba(255,255,255,.48)',
+              fontSize: 'clamp(11px, 1.5vw, 14px)',
+              lineHeight: 1.8,
+              letterSpacing: '.17em',
+              textTransform: 'uppercase',
+            }}
+          >
+            Two AI agents. Structured rounds. Live evidence. One final judge.
+          </p>
+        </motion.section>
+
+        {/* Live metrics */}
+        <motion.div
+          variants={itemVariants}
+          style={{
+            width: '100%',
+            maxWidth: 720,
+            display: 'grid',
+            gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+            gap: 10,
+            marginTop: 28,
+          }}
+        >
+          {[
+            { icon: Brain, value: '02', label: 'AI AGENTS' },
+            { icon: Layers3, value: '03–07', label: 'ROUNDS' },
+            { icon: Trophy, value: 'LIVE', label: 'JUDGE SCORE' },
+          ].map(({ icon: Icon, value, label }) => (
+            <div
+              key={label}
+              style={{
+                ...glass,
+                borderRadius: 16,
+                padding: '13px 10px',
+                textAlign: 'center',
+              }}
+            >
+              <Icon
+                size={14}
+                style={{ color: theme.accent, marginBottom: 5 }}
+              />
+              <div
+                style={{
+                  fontSize: 14,
+                  fontWeight: 900,
+                  letterSpacing: '.08em',
+                }}
+              >
+                {value}
+              </div>
+              <div
+                style={{
+                  marginTop: 3,
+                  fontSize: 8,
+                  color: 'rgba(255,255,255,.3)',
+                  letterSpacing: '.15em',
+                  fontWeight: 800,
+                }}
+              >
+                {label}
+              </div>
+            </div>
+          ))}
+        </motion.div>
+
+        {/* Main workspace */}
+        <motion.section
+          variants={itemVariants}
+          style={{
+            width: '100%',
+            maxWidth: 940,
+            marginTop: 18,
+            ...glass,
+            borderRadius: 28,
+            padding: 'clamp(16px, 3vw, 28px)',
+            position: 'relative',
+            overflow: 'hidden',
+          }}
+        >
+          <div
+            aria-hidden="true"
+            style={{
+              position: 'absolute',
+              inset: 0,
+              background: `linear-gradient(135deg, rgba(${theme.rgb},.055), transparent 38%, rgba(155,108,255,.045))`,
+              pointerEvents: 'none',
             }}
           />
 
-          {/* ── Topic / Ticker input ────────────────────────────────────── */}
-          <div className="mb-5 relative z-10">
-            <label
-              htmlFor="debate-topic-input"
-              className="block text-[10px] font-semibold tracking-[0.22em] text-white/40 uppercase mb-2.5"
-            >
-              {isStock ? '📈 Stock Ticker (NSE)' : isPersonality ? '🎭 Topic — Analyst vs Philosopher' : 'Debate Topic'}
-            </label>
-            <textarea
-              ref={textareaRef}
-              id="debate-topic-input"
-              value={topic}
-              onChange={(e) => setTopic(isStock ? e.target.value.toUpperCase() : e.target.value)}
-              onKeyDown={handleKeyDown}
-              placeholder={isStock ? 'e.g. SUZLON.NS' : isPersonality ? 'Enter a topic for the Analyst vs Philosopher clash…' : 'Enter a controversial statement or topic…'}
-              rows={isStock ? 1 : 3}
-              className="w-full bg-white/[0.04] border border-white/[0.09] rounded-xl px-4 py-3 text-white/90 placeholder-white/18 text-sm resize-none outline-none transition-all duration-300 leading-relaxed"
-              style={{ caretColor: isStock ? '#34d399' : isPersonality ? '#f59e0b' : 'var(--neon-blue)' }}
-              onFocus={(e) => {
-                e.currentTarget.style.borderColor = isStock ? 'rgba(52,211,153,0.45)' : isPersonality ? 'rgba(245,158,11,0.45)' : 'rgba(0,212,255,0.45)';
-                e.currentTarget.style.boxShadow = isStock
-                  ? '0 0 0 3px rgba(52,211,153,0.08), 0 0 25px rgba(52,211,153,0.12)'
-                  : isPersonality
-                  ? '0 0 0 3px rgba(245,158,11,0.08), 0 0 25px rgba(245,158,11,0.12)'
-                  : '0 0 0 3px rgba(0,212,255,0.08), 0 0 25px rgba(0,212,255,0.12)';
-              }}
-              onBlur={(e) => {
-                e.currentTarget.style.borderColor = 'rgba(255,255,255,0.09)';
-                e.currentTarget.style.boxShadow = 'none';
-              }}
-            />
-            {isStock ? (
-              <p className="text-white/20 text-[10px] mt-1.5">NSE स्टॉक्स के लिए ".NS" ज़रूर लगाएं</p>
-            ) : isPersonality ? (
-              <p className="text-white/20 text-[10px] mt-1.5">⚔️ Aggressive Analyst बनाम 🧘 The Philosopher — लाइव वेब रिसर्च के साथ</p>
-            ) : (
-              <div className="flex items-center justify-between mt-1.5">
-                <p className="text-white/20 text-[10px] tracking-wider">⌘↵ to start</p>
-                <p className="text-white/20 text-[10px]">{topic.length} chars</p>
-              </div>
-            )}
-          </div>
-
-          {/* ── Example chips ───────────────────────────────────────────── */}
-          <div className="mb-6 relative z-10">
-            <p className="text-[10px] text-white/25 mb-2 tracking-wider uppercase">
-              {isStock ? 'Popular tickers' : isPersonality ? 'Clash-worthy topics' : 'Quick examples'}
-            </p>
-            <div className="flex flex-wrap gap-1.5">
-              {examples.map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTopic(t)}
-                  className={`text-[10px] px-2.5 py-1.5 rounded-full border border-white/[0.08] text-white/35 transition-all duration-200 bg-white/[0.03] leading-none ${
-                    isStock
-                      ? 'hover:text-emerald-400 hover:border-emerald-400/35 hover:bg-emerald-400/[0.06]'
-                      : isPersonality
-                      ? 'hover:text-amber-400 hover:border-amber-400/35 hover:bg-amber-400/[0.06]'
-                      : 'hover:text-neon-blue hover:border-neon-blue/35 hover:bg-neon-blue/[0.06]'
-                  }`}
-                >
-                  {t}
-                </button>
+          {/* Window chrome */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: 12,
+              marginBottom: 22,
+              position: 'relative',
+              zIndex: 1,
+            }}
+          >
+            <div style={{ display: 'flex', gap: 7 }}>
+              {['#ff5f57', '#febc2e', '#28c840'].map((c) => (
+                <span
+                  key={c}
+                  style={{
+                    width: 8,
+                    height: 8,
+                    borderRadius: '50%',
+                    background: c,
+                    opacity: 0.65,
+                  }}
+                />
               ))}
             </div>
+
+            <div
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 7,
+                color: 'rgba(255,255,255,.28)',
+                fontSize: 9,
+                fontWeight: 800,
+                letterSpacing: '.16em',
+              }}
+            >
+              <Lock size={11} />
+              SECURE DEBATE SESSION
+            </div>
+
+            <div style={{ width: 44 }} />
           </div>
 
-          {/* ── Rounds selector ─────────────────────────────────────────── */}
-          <div className="mb-7 relative z-10">
-            <label className="block text-[10px] font-semibold tracking-[0.22em] text-white/40 uppercase mb-2.5">
-              Number of Rounds
-            </label>
-            <div className="flex gap-2.5">
-              {([3, 5, 7] as const).map((r) => {
-                const active = rounds === r;
-                return (
-                  <button
-                    key={r}
-                    id={`rounds-selector-${r}`}
-                    onClick={() => setRounds(r)}
-                    className={`flex-1 py-3 rounded-xl border text-xs font-bold font-orbitron transition-all duration-300 ${
-                      active
-                        ? isStock
-                          ? 'border-emerald-500/60 bg-emerald-500/12 text-emerald-400'
-                          : isPersonality
-                          ? 'border-amber-500/60 bg-amber-500/12 text-amber-400'
-                          : 'border-neon-blue/60 bg-neon-blue/12 text-neon-blue'
-                        : 'border-white/[0.08] text-white/35 hover:border-white/20 hover:text-white/60 bg-white/[0.03]'
-                    }`}
-                    style={active ? { boxShadow: isStock ? '0 0 18px rgba(52,211,153,0.28)' : isPersonality ? '0 0 18px rgba(245,158,11,0.28)' : '0 0 18px rgba(0,212,255,0.28)' } : {}}
+          {/* Mode selector */}
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 1,
+              display: 'flex',
+              flexWrap: 'wrap',
+              gap: 6,
+              padding: 5,
+              borderRadius: 15,
+              background: 'rgba(255,255,255,.035)',
+              border: '1px solid rgba(255,255,255,.065)',
+            }}
+          >
+            {[
+              { key: 'topic' as const, label: 'Topic Debate', icon: Target },
+              { key: 'stock' as const, label: 'Market War-Room', icon: LineChart },
+              { key: 'personality' as const, label: 'Personality Clash', icon: Flame },
+            ].map(({ key, label, icon: Icon }) => {
+              const active = subject === key;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => {
+                    setSubject(key);
+                    setTopic('');
+                  }}
+                  style={{
+                    flex: '1 1 180px',
+                    minHeight: 42,
+                    border: active
+                      ? `1px solid rgba(${key === 'stock' ? '67,240,164' : key === 'personality' ? '255,189,92' : '84,217,255'},.38)`
+                      : '1px solid transparent',
+                    borderRadius: 11,
+                    background: active
+                      ? `rgba(${key === 'stock' ? '67,240,164' : key === 'personality' ? '255,189,92' : '84,217,255'},.09)`
+                      : 'transparent',
+                    color: active
+                      ? key === 'stock'
+                        ? '#43f0a4'
+                        : key === 'personality'
+                          ? '#ffbd5c'
+                          : '#54d9ff'
+                      : 'rgba(255,255,255,.38)',
+                    cursor: 'pointer',
+                    fontSize: 10,
+                    fontWeight: 850,
+                    letterSpacing: '.08em',
+                    textTransform: 'uppercase',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 8,
+                    transition: 'all .2s ease',
+                  }}
+                >
+                  <Icon size={14} />
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: isMobile
+              ? 'minmax(0, 1fr)'
+              : 'minmax(0, 1.35fr) minmax(260px, .65fr)',
+              gap: 14,
+              marginTop: 14,
+              position: 'relative',
+              zIndex: 1,
+            }}
+          >
+            {/* Input panel */}
+            <div
+              style={{
+                borderRadius: 20,
+                padding: 'clamp(16px, 3vw, 22px)',
+                background: 'rgba(0,0,0,.18)',
+                border: '1px solid rgba(255,255,255,.065)',
+              }}
+            >
+              <div
+                style={{
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  gap: 12,
+                  marginBottom: 11,
+                }}
+              >
+                <div>
+                  <div
+                    style={{
+                      fontSize: 10,
+                      color: theme.accent,
+                      fontWeight: 900,
+                      letterSpacing: '.18em',
+                      textTransform: 'uppercase',
+                    }}
                   >
-                    {r} Rounds
-                  </button>
-                );
-              })}
+                    {theme.label}
+                  </div>
+                  <div
+                    style={{
+                      marginTop: 5,
+                      fontSize: 18,
+                      fontWeight: 850,
+                      letterSpacing: '-.02em',
+                    }}
+                  >
+                    Define the battlefield
+                  </div>
+                </div>
+                <TabIcon size={20} style={{ color: theme.accent, opacity: .8 }} />
+              </div>
+
+              <div
+                style={{
+                  borderRadius: 16,
+                  border: `1px solid ${topic ? `rgba(${theme.rgb},.28)` : 'rgba(255,255,255,.08)'}`,
+                  background: 'rgba(255,255,255,.025)',
+                  boxShadow: topic ? `0 0 0 3px rgba(${theme.rgb},.035)` : 'none',
+                  transition: 'all .25s ease',
+                }}
+              >
+                <textarea
+                  ref={textareaRef}
+                  value={topic}
+                  onChange={(e) =>
+                    setTopic(isStock ? e.target.value.toUpperCase() : e.target.value)
+                  }
+                  onKeyDown={handleKeyDown}
+                  placeholder={
+                    isStock
+                      ? 'Enter NSE ticker • e.g. SUZLON.NS'
+                      : isPersonality
+                        ? 'Enter a topic for Analyst vs Philosopher…'
+                        : 'Enter a controversial statement or topic…'
+                  }
+                  rows={isStock ? 2 : 5}
+                  style={{
+                    width: '100%',
+                    boxSizing: 'border-box',
+                    display: 'block',
+                    border: 0,
+                    outline: 0,
+                    resize: 'none',
+                    background: 'transparent',
+                    color: '#fff',
+                    padding: '17px 17px 8px',
+                    fontSize: 'clamp(13px, 1.6vw, 15px)',
+                    lineHeight: 1.65,
+                    fontFamily: 'inherit',
+                    caretColor: theme.accent,
+                  }}
+                />
+
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    gap: 10,
+                    padding: '0 17px 12px',
+                    color: 'rgba(255,255,255,.24)',
+                    fontSize: 9,
+                    letterSpacing: '.05em',
+                  }}
+                >
+                  <span>
+                    {isStock
+                      ? 'Use .NS for NSE symbols'
+                      : 'Ctrl / ⌘ + Enter to launch'}
+                  </span>
+                  <span>{topic.length} chars</span>
+                </div>
+              </div>
+
+              <div style={{ marginTop: 16 }}>
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    marginBottom: 9,
+                  }}
+                >
+                  <span
+                    style={{
+                      color: 'rgba(255,255,255,.3)',
+                      fontSize: 9,
+                      fontWeight: 800,
+                      letterSpacing: '.16em',
+                      textTransform: 'uppercase',
+                    }}
+                  >
+                    {isStock ? 'Popular symbols' : 'Try one of these'}
+                  </span>
+                  <Sparkles size={12} style={{ color: theme.accent, opacity: .55 }} />
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    flexWrap: 'wrap',
+                    gap: 7,
+                  }}
+                >
+                  {examples.map((example) => (
+                    <motion.button
+                      key={example}
+                      type="button"
+                      whileHover={{ y: -2 }}
+                      whileTap={{ scale: .97 }}
+                      onClick={() => {
+                        setTopic(example);
+                        textareaRef.current?.focus();
+                      }}
+                      style={{
+                        border: '1px solid rgba(255,255,255,.075)',
+                        borderRadius: 999,
+                        padding: '8px 10px',
+                        background: 'rgba(255,255,255,.025)',
+                        color: 'rgba(255,255,255,.42)',
+                        cursor: 'pointer',
+                        fontSize: 9,
+                        lineHeight: 1.2,
+                        textAlign: 'left',
+                      }}
+                    >
+                      {example}
+                    </motion.button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Control panel */}
+            <div
+              style={{
+                borderRadius: 20,
+                padding: 'clamp(16px, 3vw, 22px)',
+                background:
+                  'linear-gradient(180deg, rgba(255,255,255,.035), rgba(255,255,255,.018))',
+                border: '1px solid rgba(255,255,255,.065)',
+                display: 'flex',
+                flexDirection: 'column',
+              }}
+            >
+              <div
+                style={{
+                  color: 'rgba(255,255,255,.34)',
+                  fontSize: 9,
+                  fontWeight: 850,
+                  letterSpacing: '.16em',
+                  textTransform: 'uppercase',
+                }}
+              >
+                Battle configuration
+              </div>
+
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 14,
+                  borderRadius: 15,
+                  background: 'rgba(0,0,0,.18)',
+                  border: '1px solid rgba(255,255,255,.055)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 800 }}>Rounds</div>
+                    <div
+                      style={{
+                        marginTop: 3,
+                        fontSize: 9,
+                        color: 'rgba(255,255,255,.27)',
+                      }}
+                    >
+                      More rounds = deeper debate
+                    </div>
+                  </div>
+                  <Gauge size={18} style={{ color: theme.accent }} />
+                </div>
+
+                <div
+                  style={{
+                    display: 'grid',
+                    gridTemplateColumns: 'repeat(3,1fr)',
+                    gap: 7,
+                    marginTop: 13,
+                  }}
+                >
+                  {[3, 5, 7].map((r) => {
+                    const active = rounds === r;
+                    return (
+                      <motion.button
+                        key={r}
+                        type="button"
+                        whileTap={{ scale: .96 }}
+                        onClick={() => setRounds(r)}
+                        style={{
+                          minHeight: 48,
+                          borderRadius: 12,
+                          border: active
+                            ? `1px solid rgba(${theme.rgb},.42)`
+                            : '1px solid rgba(255,255,255,.065)',
+                          background: active ? theme.soft : 'rgba(255,255,255,.025)',
+                          color: active ? theme.accent : 'rgba(255,255,255,.35)',
+                          cursor: 'pointer',
+                          fontSize: 12,
+                          fontWeight: 900,
+                        }}
+                      >
+                        {r}
+                        <span
+                          style={{
+                            display: 'block',
+                            marginTop: 2,
+                            fontSize: 7,
+                            letterSpacing: '.1em',
+                            opacity: .65,
+                          }}
+                        >
+                          ROUNDS
+                        </span>
+                      </motion.button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div
+                style={{
+                  marginTop: 10,
+                  padding: 14,
+                  borderRadius: 15,
+                  background: 'rgba(0,0,0,.14)',
+                  border: '1px solid rgba(255,255,255,.055)',
+                }}
+              >
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 9,
+                    fontSize: 10,
+                    fontWeight: 800,
+                    color: 'rgba(255,255,255,.52)',
+                  }}
+                >
+                  <Swords size={14} style={{ color: theme.accent }} />
+                  MATCH FORMAT
+                </div>
+
+                <div
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginTop: 12,
+                  }}
+                >
+                  {['AI A', 'VS', 'AI B'].map((text, i) => (
+                    <div
+                      key={text}
+                      style={{
+                        flex: i === 1 ? 0 : 1,
+                        textAlign: 'center',
+                        padding: '8px 5px',
+                        borderRadius: 9,
+                        background:
+                          i === 1 ? 'transparent' : 'rgba(255,255,255,.035)',
+                        border:
+                          i === 1
+                            ? '0'
+                            : '1px solid rgba(255,255,255,.055)',
+                        color:
+                          i === 1 ? theme.accent : 'rgba(255,255,255,.42)',
+                        fontSize: 8,
+                        fontWeight: 900,
+                        letterSpacing: '.1em',
+                      }}
+                    >
+                      {text}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ marginTop: 'auto', paddingTop: 14 }}>
+                <motion.button
+                  id="start-debate-btn"
+                  type="button"
+                  disabled={!canStart}
+                  onClick={handleStart}
+                  whileHover={canStart ? { y: -2, scale: 1.01 } : {}}
+                  whileTap={canStart ? { scale: .985 } : {}}
+                  style={{
+                    width: '100%',
+                    minHeight: 58,
+                    border: 0,
+                    borderRadius: 15,
+                    cursor: canStart ? 'pointer' : 'not-allowed',
+                    background: canStart
+                      ? theme.gradient
+                      : 'rgba(255,255,255,.045)',
+                    color: canStart ? '#fff' : 'rgba(255,255,255,.22)',
+                    boxShadow: canStart
+                      ? `0 12px 38px rgba(${theme.rgb},.2), 0 0 60px rgba(${theme.rgb},.08)`
+                      : 'none',
+                    fontFamily: 'inherit',
+                    fontSize: 10,
+                    fontWeight: 950,
+                    letterSpacing: '.16em',
+                    textTransform: 'uppercase',
+                    position: 'relative',
+                    overflow: 'hidden',
+                  }}
+                >
+                  <AnimatePresence mode="wait">
+                    <motion.span
+                      key={launching ? 'launching' : 'ready'}
+                      initial={{ opacity: 0, y: 8 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: -8 }}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        gap: 9,
+                      }}
+                    >
+                      {launching ? (
+                        <>
+                          <motion.span
+                            animate={{ rotate: 360 }}
+                            transition={{
+                              duration: .8,
+                              repeat: Infinity,
+                              ease: 'linear',
+                            }}
+                            style={{ display: 'inline-flex' }}
+                          >
+                            <Zap size={15} />
+                          </motion.span>
+                          INITIALIZING ARENA…
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={15} />
+                          {isStock
+                            ? 'Launch War-Room'
+                            : isPersonality
+                              ? 'Start The Clash'
+                              : 'Start Debate'}
+                          <ArrowRight size={15} />
+                        </>
+                      )}
+                    </motion.span>
+                  </AnimatePresence>
+
+                  {canStart && !launching && (
+                    <motion.span
+                      aria-hidden="true"
+                      style={{
+                        position: 'absolute',
+                        top: 0,
+                        bottom: 0,
+                        width: 80,
+                        background:
+                          'linear-gradient(90deg,transparent,rgba(255,255,255,.28),transparent)',
+                        filter: 'blur(2px)',
+                      }}
+                      animate={{ left: ['-25%', '125%'] }}
+                      transition={{
+                        duration: 2.4,
+                        repeat: Infinity,
+                        ease: 'linear',
+                        repeatDelay: .7,
+                      }}
+                    />
+                  )}
+                </motion.button>
+              </div>
             </div>
           </div>
 
-          {/* ── Start button ────────────────────────────────────────────── */}
-          <div className="relative z-10">
-            <motion.button
-              id="start-debate-btn"
-              onClick={handleStart}
-              disabled={!canStart}
-              whileHover={canStart ? { scale: 1.018 } : {}}
-              whileTap={canStart  ? { scale: 0.982 } : {}}
-              className={`w-full py-4 rounded-xl font-orbitron font-bold text-xs tracking-[0.22em] uppercase transition-all duration-300 relative overflow-hidden ${
-                canStart ? 'btn-shimmer cursor-pointer' : 'cursor-not-allowed opacity-30'
-              }`}
-              style={
-                canStart
-                  ? {
-                      background: isStock
-                        ? 'linear-gradient(135deg, #059669 0%, #10b981 50%, #e6174a 100%)'
-                        : isPersonality
-                        ? 'linear-gradient(135deg, #f59e0b 0%, #ef4444 50%, #7c3aed 100%)'
-                        : 'linear-gradient(135deg, #00b8d9 0%, #9645e0 50%, #e6174a 100%)',
-                      boxShadow: isStock
-                        ? '0 0 28px rgba(52,211,153,0.45), 0 0 60px rgba(255,45,85,0.25), 0 4px 20px rgba(0,0,0,0.4)'
-                        : isPersonality
-                        ? '0 0 28px rgba(245,158,11,0.45), 0 0 60px rgba(239,68,68,0.25), 0 4px 20px rgba(0,0,0,0.4)'
-                        : '0 0 28px rgba(0,212,255,0.45), 0 0 60px rgba(191,90,242,0.25), 0 4px 20px rgba(0,0,0,0.4)',
-                      color: '#ffffff',
-                    }
-                  : {
-                      background: 'rgba(255,255,255,0.04)',
-                      border: '1px solid rgba(255,255,255,0.08)',
-                      color: 'rgba(255,255,255,0.2)',
-                    }
-              }
-            >
-              <span className="relative flex items-center justify-center gap-2.5">
-                <Zap className="w-3.5 h-3.5" />
-                {launching ? 'Initializing Arena…' : isStock ? 'Launch War-Room' : isPersonality ? 'Start the Clash' : 'Start Debate'}
-                <Zap className="w-3.5 h-3.5" />
-              </span>
-            </motion.button>
-
-            <AnimatePresence>
-              {launching && (
-                <motion.div
-                  className="absolute inset-0 rounded-xl overflow-hidden pointer-events-none"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                >
-                  <motion.div
-                    className="absolute inset-0"
-                    style={{
-                      background:
-                        'linear-gradient(90deg, transparent, rgba(255,255,255,0.25), transparent)',
-                    }}
-                    animate={{ x: ['-100%', '200%'] }}
-                    transition={{ duration: 0.8, ease: 'easeInOut' }}
-                  />
-                </motion.div>
-              )}
-            </AnimatePresence>
+          {/* Bottom trust strip */}
+          <div
+            style={{
+              position: 'relative',
+              zIndex: 1,
+              display: 'flex',
+              flexWrap: 'wrap',
+              justifyContent: 'center',
+              gap: '8px 22px',
+              marginTop: 18,
+              color: 'rgba(255,255,255,.23)',
+              fontSize: 8,
+              fontWeight: 800,
+              letterSpacing: '.13em',
+              textTransform: 'uppercase',
+            }}
+          >
+            <span>● SSE Streaming</span>
+            <span>● Structured Arguments</span>
+            <span>● Evidence-Aware</span>
+            <span>● Judge Scoring</span>
           </div>
-        </div>
-      </motion.div>
+        </motion.section>
 
-      {/* ── Scroll cue ──────────────────────────────────────────────────── */}
-      <motion.div
-        variants={itemVariants}
-        className="absolute bottom-8 left-1/2 -translate-x-1/2 flex flex-col items-center gap-1.5 opacity-30"
-      >
-        <div className="w-px h-10 bg-gradient-to-b from-neon-blue/60 to-transparent" />
-        <ChevronDown className="w-4 h-4 text-white animate-bounce" />
-      </motion.div>
-    </motion.div>
+        {/* Scroll / footer cue */}
+        <motion.div
+          variants={itemVariants}
+          style={{
+            marginTop: 24,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 7,
+            color: 'rgba(255,255,255,.22)',
+          }}
+        >
+          <span
+            style={{
+              fontSize: 8,
+              letterSpacing: '.2em',
+              fontWeight: 800,
+            }}
+          >
+            ENTER THE ARENA
+          </span>
+          <motion.div
+            animate={{ y: [0, 5, 0] }}
+            transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+          >
+            <ChevronDown size={15} />
+          </motion.div>
+        </motion.div>
+      </div>
+    </motion.main>
   );
 }
