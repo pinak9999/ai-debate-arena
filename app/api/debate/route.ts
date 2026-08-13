@@ -47,7 +47,6 @@ function toManualTextStream(text: string): Response {
   });
 }
 
-// 🔥 FIX 1: LLM-Powered Smart Query Extractor (Stops Medical/Random RAG Hallucinations!)
 async function generateSearchQuery(text: string): Promise<string> {
   try {
     const { text: query } = await generateText({
@@ -57,7 +56,6 @@ async function generateSearchQuery(text: string): Promise<string> {
     });
     return query.replace(/["']/g, '').trim();
   } catch {
-    // Fallback
     return text.replace(/[।!?,.\n]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 6).join(' ').trim();
   }
 }
@@ -426,12 +424,18 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
 
     // ─────────────────────────────────────────────────────────────────
     // 3. JUDGE VERDICT
+    // 🔥 FIX 1: अब जज लाइव वोट्स (audienceScore) को कंसीडर करेगा!
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'judge_verdict') {
-      const { topic, history = [], mode = 'topic', language = 'Hindi' } = body;
+      const { topic, history = [], mode = 'topic', language = 'Hindi', audienceScore } = body;
       const biasNote = mode === 'personality'
         ? '\nIMPORTANT: Remain STRICTLY NEUTRAL between the Aggressive Data-Driven debater and the Philosophical debater. Score only on logical strength, evidence, and direct engagement.'
         : '';
+
+      let voteContext = '';
+      if (audienceScore && isValidAudienceScore(audienceScore) && audienceScore.pro > 0 && audienceScore.opp > 0) {
+        voteContext = `\nLIVE AUDIENCE VOTE: The audience voted ${audienceScore.pro}% for Proponent and ${audienceScore.opp}% for Opponent. You MUST let this heavily influence the "persuasion" score.`;
+      }
 
       let proPenalty = 0;
       let oppPenalty = 0;
@@ -448,11 +452,12 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
 
 Transcript:
 ${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}
+${voteContext}
 
 Score EACH debater SEPARATELY across FOUR distinct categories, each out of 100.
 - "logic": coherence of reasoning and absence of extreme/irrational rhetoric.
 - "creativity": originality of angles/examples.
-- "persuasion": rhetorical force and confidence.
+- "persuasion": rhetorical force and confidence. (Factor in the Live Audience Vote here).
 - "evidence": use of concrete facts and data.
 
 CRITICAL RULES:
@@ -527,12 +532,24 @@ Respond STRICTLY with JSON ONLY, no extra text:
 
     // ─────────────────────────────────────────────────────────────────
     // 4. ROUND SCORE
-    // 🔥 FIX 2: Aligned Round Score criteria with Final Judge criteria
+    // 🔥 FIX 2: ग्राफ में पेनल्टी को हाथों-हाथ (Instantly) घटाया जाएगा!
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'round_score') {
       const { topic, history = [], round, language = 'Hindi' } = body;
 
       const roundMessages = history.filter((msg: { round: number }) => Number(msg.round) === Number(round));
+      
+      let proRoundPenalty = 0;
+      let oppRoundPenalty = 0;
+      roundMessages.forEach((msg: { speaker: string; text: string }) => {
+        const match = msg.text.match(/\[SYSTEM NOTE: PENALTY APPLIED.*?(-\d+)/i);
+        if (match && match[1]) {
+          const deduction = Math.abs(parseInt(match[1], 10));
+          if (msg.speaker === 'proponent') proRoundPenalty += deduction;
+          if (msg.speaker === 'opponent') oppRoundPenalty += deduction;
+        }
+      });
+
       const transcriptForRound = roundMessages
         .map((msg: { speaker: string; text: string }) => `${msg.speaker}: ${msg.text}`)
         .join('\n\n');
@@ -542,11 +559,10 @@ Respond STRICTLY with JSON ONLY, no extra text:
 Round ${round} statements:
 ${transcriptForRound || '(No statements found for this round)'}
 
-Score each debater's performance in THIS ROUND ONLY, between 55 and 95. 
+Score each debater's performance in THIS ROUND ONLY, between 60 and 95. 
 CRITICAL RULES:
 1. Base it strictly on logical coherence and strength of rebuttal. 
-2. HEAVILY PENALIZE extreme fear-mongering (e.g., "toxic asset", "ticking time bomb", "catastrophic") or baseless extreme rhetoric. If a debater uses such words without data, score them low (below 70).
-3. Reward calm, data-driven reasoning.
+2. Reward calm, data-driven reasoning.
 
 Respond STRICTLY with JSON ONLY: {"pro": <number>, "opp": <number>}`;
 
@@ -555,10 +571,12 @@ Respond STRICTLY with JSON ONLY: {"pro": <number>, "opp": <number>}`;
         temperature: 0.5,
         prompt
       });
-      const parsed = safeJsonParse(text, { pro: 70, opp: 70 });
+      const parsed = safeJsonParse(text, { pro: 75, opp: 75 });
+      
       return NextResponse.json({
-        pro: clampScore(parsed.pro, 70, 30, 100),
-        opp: clampScore(parsed.opp, 70, 30, 100),
+        // पेनल्टी को LLM के स्कोर से तुरंत घटाकर ग्राफ में भेज रहे हैं
+        pro: clampScore(parsed.pro - proRoundPenalty, 75, 30, 100),
+        opp: clampScore(parsed.opp - oppRoundPenalty, 75, 30, 100),
       });
     }
 
@@ -614,7 +632,6 @@ Respond STRICTLY with JSON ONLY:
 
     // ─────────────────────────────────────────────────────────────────
     // 6. FACT CHECK
-    // 🔥 FIX 4: Implemented Smart Query generation to stop Medical Hallucinations
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fact_check') {
       const { claim, language = 'Hindi' } = body;
