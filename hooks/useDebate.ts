@@ -45,7 +45,8 @@ export interface JudgeScores {
 export type DebateStatus = 'idle' | 'debating' | 'judging' | 'finished' | 'error';
 export type DebateMode = 'spectator' | 'player';
 
-export type DebateSubject = 'topic' | 'stock' | 'personality';
+// 🔥 यहाँ 'youtube' को सुरक्षित तरीके से जोड़ दिया गया है
+export type DebateSubject = 'topic' | 'stock' | 'personality' | 'youtube';
 
 export type DebateLanguage =
   | 'Hindi'
@@ -110,7 +111,6 @@ export interface AgentLog {
   type: 'info' | 'fact' | 'fallacy' | 'judge' | 'system' | 'ui_render';
 }
 
-// 🔥 FIX: Added 'total' to AudienceScore
 export interface AudienceScore {
   pro: number;
   opp: number;
@@ -223,7 +223,6 @@ export function useDebate(): UseDebateReturn {
   const [topic, setTopic] = useState('');
   const [error, setError] = useState<string | null>(null);
 
-  // 🔥 FIX: Topic ref for accurate querying in setInterval/websockets
   const topicRef = useRef<string>('');
   useEffect(() => {
     topicRef.current = topic;
@@ -240,7 +239,6 @@ export function useDebate(): UseDebateReturn {
 
   const [agentLogs, setAgentLogs] = useState<AgentLog[]>([]);
   
-  // 🔥 FIX: Start with total: 0
   const [audienceScore, setAudienceScore] = useState<AudienceScore>({ pro: 50, opp: 50, total: 0 });
   const audienceScoreRef = useRef<AudienceScore>({ pro: 50, opp: 50, total: 0 });
   
@@ -274,7 +272,6 @@ export function useDebate(): UseDebateReturn {
     setAgentLogs((prev) => [...prev, { id: generateId(), timestamp: Date.now(), text, type }]);
   }, []);
 
-  // 🔥 FIX: Topic Filtering & 0-Vote Handling
   const syncLiveVotes = useCallback(async () => {
     const activeRound = currentRoundRef.current;
     const currentTopic = topicRef.current;
@@ -673,7 +670,6 @@ export function useDebate(): UseDebateReturn {
       setLanguage(debateLanguage);
       languageRef.current = debateLanguage;
 
-      // 🔥 FIX: Set Topic and Ref immediately
       setTopic(config.topic);
       topicRef.current = config.topic;
       
@@ -687,7 +683,6 @@ export function useDebate(): UseDebateReturn {
       setFactChecks({});
       setAgentLogs([]);
       
-      // 🔥 FIX: Reset total to 0
       setAudienceScore({ pro: 50, opp: 50, total: 0 });
       audienceScoreRef.current = { pro: 50, opp: 50, total: 0 };
       
@@ -698,6 +693,8 @@ export function useDebate(): UseDebateReturn {
       addLog(`[System] Initializing debate environment. Topic: "${config.topic}" | Language: ${debateLanguage}`, 'system');
 
       let fetchedStockData: StockData | null = null;
+      
+      // 🔥 यहाँ YouTube मोड के लिए नया सिस्टम लॉग जोड़ा गया है
       if (subjectMode === 'stock') {
         setStockLoading(true);
         addLog(`[Market Data] Fetching live intraday feed for ${config.topic}...`, 'system');
@@ -714,6 +711,8 @@ export function useDebate(): UseDebateReturn {
         }
       } else if (subjectMode === 'personality') {
         addLog(`[System] Personality Clash Mode activated — Aggressive Analyst vs The Philosopher, grounded via live web research.`, 'system');
+      } else if (subjectMode === 'youtube') {
+        addLog(`[System] YouTube Creator Clash activated — AI agents will debate the video's core claims.`, 'system');
       }
 
       supabase.removeAllChannels();

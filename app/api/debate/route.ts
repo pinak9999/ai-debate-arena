@@ -271,6 +271,7 @@ export async function POST(req: NextRequest) {
 
       const isStockMode = mode === 'stock';
       const isPersonalityMode = mode === 'personality';
+      const isYoutubeMode = mode === 'youtube'; // 🔥 नया मोड डिडक्ट किया
       const position = speaker === 'proponent' ? 'SUPPORTING' : 'OPPOSING';
 
       const messages = history.map((msg: { speaker: string; text: string }) => ({
@@ -286,11 +287,12 @@ export async function POST(req: NextRequest) {
 - Change: ${stockContext.change} (${stockContext.changePercent}%)
 CRITICAL: Use these EXACT numbers in your argument. Do not just state the price; analyze WHAT it means for momentum, valuation, or trend.`
           : `No live market feed available right now. Argue using general macroeconomic and sector-specific financial knowledge.`;
-      } else if (isPersonalityMode) {
-        const lastMessageText = history.length > 0 ? history[history.length - 1].text : topic;
-        const tavilyData = await groundWithTavily(lastMessageText);
+      } else if (isPersonalityMode || isYoutubeMode) {
+        // 🔥 YouTube वीडियो के टॉपिक को लेकर लाइव वेब सर्च करेगा
+        const searchContext = round === 1 ? topic.replace('[YOUTUBE CONTEXT]', '') : (history.length > 0 ? history[history.length - 1].text : topic);
+        const tavilyData = await groundWithTavily(searchContext);
         groundingBlock = tavilyData
-          ? `LIVE INTERNET RESEARCH: \n${tavilyData.snippet}\nIncorporate current facts naturally.`
+          ? `LIVE INTERNET FACT-CHECK DATA: \n${tavilyData.snippet}\nIncorporate current facts naturally.`
           : `Rely on strong reasoning and logical deduction.`;
       } else {
         const lastMessageText = history.length > 0 ? history[history.length - 1].text : topic;
@@ -306,28 +308,36 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 2. NEVER CONCEDE. Never adopt the opponent's conclusion. You must fiercely defend your stance.
 3. BAN ON ROBOTIC CONNECTORS: Do NOT repeatedly use formal connector words. Use natural, sharp, aggressive transitions like a real human debater.
 4. STRICT ANTI-REPETITION: DO NOT copy-paste sentences or exact phrases from previous rounds. Bring a NEW logical angle, NEW risk, or NEW metric every round.
-5. STRICT BAN ON BIZARRE ANALOGIES: Do NOT use mental health disorders as examples. Use real-world artistic, economic, or technological examples.
-6. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", "Opponent's logic" or "Appeal to fear". Just destroy their logic naturally.
+5. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", "Opponent's logic" or "Appeal to fear". Just destroy their logic naturally.
       `.trim();
 
       const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY. Do not use Roman/English letters. Every single word must be authentically written in the native ${language} alphabet.`;
 
       let roundInstruction = '';
-      if (round === 1) {
-        roundInstruction = isStockMode
-          ? 'OPENING PITCH: State your core investment thesis clearly. Act like an elite Wall Street Hedge Fund Manager. Justify your bullish/bearish stance using the live data. (60-80 words).'
-          : 'OPENING STATEMENT: Clearly define your core thesis. Present your strongest foundational argument with impact. (60-80 words).';
-      } else if (round === totalRounds) {
-        roundInstruction = isStockMode
-          ? 'FINAL CALL: No new data. Deliver your hard-hitting final trading recommendation. Tell the audience exactly why taking the opposite trade is a massive mistake. (Max 50 words).'
-          : "CLOSING STATEMENT: Do not introduce new evidence. Powerfully summarize why your side wins. Deliver a hard-hitting final punchline. (Max 50 words).";
-      } else {
-        roundInstruction = isStockMode
-          ? "DIRECT CLASH: Aggressively attack the specific fundamental or technical flaw in the opponent's last point. Then reinforce your own trade thesis with a new metric or market angle. (60-80 words)."
-          : "DIRECT CLASH & REBUTTAL: 1. Directly attack the specific flaw in the opponent's last statement. 2. Reinforce your stance with a new layer of argument. (60-80 words).";
-      }
-
-      if (isPersonalityMode) {
+      if (isYoutubeMode) {
+        // 🔥 YouTube Mode Round Instructions
+        if (round === 1) {
+          roundInstruction = speaker === 'proponent'
+            ? "OPENING DEFENSE: You are a loyal fan of this creator. Strongly agree with the video's main claims and defend them fiercely. (60-80 words)."
+            : "OPENING CRITIQUE: You are a ruthless fact-checker. Attack the creator's main claims. Expose bias, missing context, or half-truths. (60-80 words).";
+        } else if (round === totalRounds) {
+          roundInstruction = speaker === 'proponent'
+            ? "FINAL STAND: Powerfully summarize why the creator is absolutely right and the critics are wrong. (Max 50 words)."
+            : "FINAL TAKEDOWN: Deliver a crushing conclusion on why the video is misleading, flawed, or biased. (Max 50 words).";
+        } else {
+          roundInstruction = speaker === 'proponent'
+            ? "COUNTER-ATTACK: Defend the creator against the opponent's criticism. Provide a new supporting angle to validate the video. (60-80 words)."
+            : "DIRECT CLASH: Dismantle the defender's logic. Point out exactly why the creator's argument falls apart in the real world. (60-80 words).";
+        }
+      } else if (isStockMode) {
+        if (round === 1) {
+          roundInstruction = 'OPENING PITCH: State your core investment thesis clearly. Act like an elite Wall Street Hedge Fund Manager. Justify your bullish/bearish stance using the live data. (60-80 words).';
+        } else if (round === totalRounds) {
+          roundInstruction = 'FINAL CALL: No new data. Deliver your hard-hitting final trading recommendation. Tell the audience exactly why taking the opposite trade is a massive mistake. (Max 50 words).';
+        } else {
+          roundInstruction = "DIRECT CLASH: Aggressively attack the specific fundamental or technical flaw in the opponent's last point. Then reinforce your own trade thesis with a new metric or market angle. (60-80 words).";
+        }
+      } else if (isPersonalityMode) {
         if (round === 1) {
           roundInstruction = speaker === 'proponent'
             ? 'OPENING BLITZ: Open with hard data, statistics, or a current news fact. Be direct, punchy, assertive. (60-80 words).'
@@ -341,17 +351,42 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
             ? "DATA STRIKE: Directly attack the philosopher's argument, then reinforce your position with a fresh data point. (60-80 words)."
             : "PHILOSOPHICAL COUNTER: Directly challenge the ethical blind spot in the data-driven argument, then deepen your own reasoning. (60-80 words).";
         }
+      } else {
+        if (round === 1) {
+          roundInstruction = 'OPENING STATEMENT: Clearly define your core thesis. Present your strongest foundational argument with impact. (60-80 words).';
+        } else if (round === totalRounds) {
+          roundInstruction = "CLOSING STATEMENT: Do not introduce new evidence. Powerfully summarize why your side wins. Deliver a hard-hitting final punchline. (Max 50 words).";
+        } else {
+          roundInstruction = "DIRECT CLASH & REBUTTAL: 1. Directly attack the specific flaw in the opponent's last statement. 2. Reinforce your stance with a new layer of argument. (60-80 words).";
+        }
       }
 
       const rlInstruction = buildRLInstruction(audienceScore, round, speaker);
 
-      const opponentExtraInstruction = isStockMode
-        ? `As the RUTHLESS BEAR, identify ONE fresh fundamental, valuation, or macroeconomic risk not mentioned before, and weave it naturally into your argument. Your goal is to create doubt.`
-        : isPersonalityMode
-        ? `Identify ONE ethical or historical/philosophical concern the proponent's argument overlooks, and weave it naturally into your argument.`
-        : `Identify the ONE main factual counter-point or logical flaw in the proponent's latest argument (without naming it academically), and weave it naturally into your argument.`;
+      let opponentExtraInstruction = '';
+      if (isYoutubeMode) {
+        opponentExtraInstruction = `Identify ONE major logical flaw, bias, or missing real-world fact from the YouTuber's claims, and hammer it.`;
+      } else if (isStockMode) {
+        opponentExtraInstruction = `As the RUTHLESS BEAR, identify ONE fresh fundamental, valuation, or macroeconomic risk not mentioned before, and weave it naturally into your argument. Your goal is to create doubt.`;
+      } else if (isPersonalityMode) {
+        opponentExtraInstruction = `Identify ONE ethical or historical/philosophical concern the proponent's argument overlooks, and weave it naturally into your argument.`;
+      } else {
+        opponentExtraInstruction = `Identify the ONE main factual counter-point or logical flaw in the proponent's latest argument (without naming it academically), and weave it naturally into your argument.`;
+      }
 
-      const systemPrompt = isStockMode
+      const systemPrompt = isYoutubeMode
+        ? `
+You are debating a popular YouTube video's claims. Topic/Context: "${topic}".
+Role: ${speaker === 'proponent' ? 'THE LOYAL SUPPORTER' : 'THE RUTHLESS CRITIC'}.
+${groundingBlock}
+${speaker === 'opponent' ? opponentExtraInstruction : ''}
+${antiRepetitionRule}
+${rlInstruction}
+${roundInstruction}
+${langInstruction}
+Tone: ${speaker === 'proponent' ? 'Defensive, supportive, highly confident.' : 'Skeptical, fact-driven, aggressive critic.'}
+        `.trim()
+        : isStockMode
         ? `
 You are an elite, cut-throat Wall Street Financial Analyst debating the asset "${topic}".
 Role: ${speaker === 'proponent' ? 'AGGRESSIVE BULL (Proponent)' : 'RUTHLESS BEAR (Opponent)'}.
@@ -402,6 +437,8 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       const { history = [], mode = 'topic', language = 'Hindi' } = body;
       const biasNote = mode === 'personality'
         ? ' Judge purely on logical strength and evidence — do not favor either style.'
+        : mode === 'youtube'
+        ? ' Judge purely on logic and fact-checking strength. Do not show bias towards or against the creator.'
         : '';
       const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback, written STRICTLY in ${language.toUpperCase()} Native Script, under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
       const { text } = await generateText({
@@ -419,6 +456,8 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       const { topic, history = [], mode = 'topic', language = 'Hindi', audienceScore } = body;
       const biasNote = mode === 'personality'
         ? '\nIMPORTANT: Remain STRICTLY NEUTRAL between the Aggressive Data-Driven debater and the Philosophical debater. Score only on logical strength, evidence, and direct engagement.'
+        : mode === 'youtube'
+        ? '\nIMPORTANT: You are evaluating a debate about a YouTube video. Score based on who had better facts and logical rebuttals, not on your own opinion of the creator.'
         : '';
 
       let voteContext = '';
@@ -429,7 +468,6 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       let proPenalty = 0;
       let oppPenalty = 0;
       
-      // Safety net: Catch toxic keywords manually to match round_score logic
       const toxicKeywords = ['toxic asset', 'time bomb', 'catastrophic', 'ruin', 'house of cards', 'devastating', 'disaster', 'reckless', 'collapse', 'ticking'];
 
       history.forEach((msg: { speaker: string; text: string }) => {
@@ -533,7 +571,6 @@ Respond STRICTLY with JSON ONLY, no extra text:
 
     // ─────────────────────────────────────────────────────────────────
     // 4. ROUND SCORE
-    // 🔥 THE ULTIMATE FIX: Race Condition Bypass for Instant Graph Crash!
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'round_score') {
       const { topic, history = [], round, language = 'Hindi' } = body;
@@ -543,23 +580,20 @@ Respond STRICTLY with JSON ONLY, no extra text:
       let proRoundPenalty = 0;
       let oppRoundPenalty = 0;
 
-      // ये वो डरावने शब्द हैं जिनपर पेनाल्टी लगती है
       const toxicKeywords = ['toxic asset', 'time bomb', 'catastrophic', 'ruin', 'house of cards', 'devastating', 'disaster', 'reckless', 'collapse', 'ticking'];
 
       roundMessages.forEach((msg: { speaker: string; text: string }) => {
         let deduction = 0;
         
-        // चेक करें कि क्या UI ने पेनाल्टी भेज दी है?
         const match = msg.text.match(/\[SYSTEM NOTE: PENALTY APPLIED.*?(-\d+)/i);
         if (match && match[1]) {
           deduction += Math.abs(parseInt(match[1], 10));
         }
 
-        // 🔴 MAGIC FIX: अगर UI स्लो है और उसने पेनाल्टी नहीं भेजी, तो हम खुद शब्द ढूंढकर पेनाल्टी मार देंगे!
         const lowerText = msg.text.toLowerCase();
         const hasToxic = toxicKeywords.some(kw => lowerText.includes(kw));
         if (hasToxic && deduction === 0) {
-          deduction += 10; // भयंकर शब्दों पर तुरंत 10 नंबर कटेंगे
+          deduction += 10;
         }
 
         if (msg.speaker === 'proponent') { proRoundPenalty += deduction; }
@@ -578,13 +612,13 @@ ${transcriptForRound || '(No statements found for this round)'}
 Score each debater's performance in THIS ROUND ONLY on a scale of 60 to 95. 
 CRITICAL RULES:
 1. If a debater uses extreme fear-mongering rhetoric without concrete numerical data, their score MUST be between 60 and 70.
-2. If a debater uses solid financial metrics calmly, score them between 80 and 95.
+2. If a debater uses solid reasoning/metrics calmly, score them between 80 and 95.
 
 Respond STRICTLY with JSON ONLY: {"pro": <number>, "opp": <number>}`;
 
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
-        temperature: 0.1, // टेम्परेचर 0.1 ताकि AI नंबर देने में सख्त रहे
+        temperature: 0.1,
         prompt
       });
       
@@ -593,7 +627,6 @@ Respond STRICTLY with JSON ONLY: {"pro": <number>, "opp": <number>}`;
       let finalPro = parsed.pro;
       let finalOpp = parsed.opp;
 
-      // 🔴 THE MAGIC OVERRIDE: जैसे ही पेनाल्टी लगेगी, नंबर सीधा 60-65 की लाइन में आ गिरेंगे!
       if (proRoundPenalty > 0) finalPro = Math.min(finalPro, 72) - proRoundPenalty;
       if (oppRoundPenalty > 0) finalOpp = Math.min(finalOpp, 72) - oppRoundPenalty;
 
@@ -617,7 +650,7 @@ CRITICAL DEBATE RULES:
 2. ONLY flag a GENUINE fallacy if the statement meets a HIGH bar:
    - Ad Hominem -> Penalty: 10
    - Strawman -> Penalty: 8
-   - Appeal to Fear / Existential Threat (uses exaggerated, catastrophic, alarmist language SPECIFICALLY to bypass logic — e.g. "toxic asset", "ticking time bomb") -> Penalty: 5
+   - Appeal to Fear / Existential Threat (uses exaggerated, catastrophic, alarmist language SPECIFICALLY to bypass logic) -> Penalty: 5
    - Appeal to Emotion -> Penalty: 5
 3. If in doubt, set "hasFallacy": false and "penalty": 0. 
 

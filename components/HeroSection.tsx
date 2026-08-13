@@ -2,12 +2,13 @@
 
 import { useState, useRef, type KeyboardEvent } from 'react';
 import { motion, type Variants } from 'framer-motion';
-import { Zap, Brain, TrendingUp, Target, Flame, Sparkles } from 'lucide-react';
+// 🔥 यहाँ Youtube की जगह PlaySquare लगा दिया है
+import { Zap, Brain, TrendingUp, Target, Flame, Sparkles, PlaySquare } from 'lucide-react';
 import { ModeToggle } from '@/components/ModeToggle';
 import { DebateLanguage } from '@/hooks/useDebate';
 
 interface HeroSectionProps {
-  onStart: (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality') => void;
+  onStart: (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality' | 'youtube') => void;
   mode: 'spectator' | 'player';
   setMode: (mode: 'spectator' | 'player') => void;
   selectedLang: DebateLanguage;
@@ -26,11 +27,15 @@ const EXAMPLES = {
     'Should the death penalty be abolished?',
     'Is capitalism the best economic system?',
   ],
+  youtube: [
+    'Paste any Dhruv Rathee video link...',
+    'Paste any Nitish Rajput video link...',
+  ]
 };
 
 const TICKER_ITEMS = [
   'Round-based scoring', 'Live AI judge', 'Elo-style ratings', 
-  'NSE stock debates', 'Multilingual support', 'Real-time streaming'
+  'NSE stock debates', 'YouTube Clash Mode', 'Real-time streaming'
 ];
 
 const containerVariants: Variants = {
@@ -44,7 +49,7 @@ const itemVariants: Variants = {
 };
 
 export default function HeroSection({ onStart, mode, setMode, selectedLang, setSelectedLang, disabled }: HeroSectionProps) {
-  const [subject, setSubject] = useState<'topic' | 'stock' | 'personality'>('topic');
+  const [subject, setSubject] = useState<'topic' | 'stock' | 'personality' | 'youtube'>('topic');
   const [topic, setTopic] = useState('');
   const [rounds, setRounds] = useState(3);
   const [launching, setLaunching] = useState(false);
@@ -52,12 +57,38 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
 
   const isStock = subject === 'stock';
   const isPersonality = subject === 'personality';
+  const isYoutube = subject === 'youtube';
   const examples = EXAMPLES[subject];
 
-  const handleStart = () => {
+  const handleStart = async () => {
     if (!topic.trim() || launching) return;
     setLaunching(true);
-    setTimeout(() => onStart(topic.trim(), rounds, subject), 400);
+
+    if (isYoutube) {
+      try {
+        const res = await fetch('/api/youtube', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ url: topic.trim() })
+        });
+        const data = await res.json();
+
+        if (data.error) {
+          alert('Error: ' + data.error);
+          setLaunching(false);
+          return;
+        }
+
+        const debatePrompt = `[YOUTUBE CONTEXT] Video Topic: ${data.topic} | Creator's Main Claims: ${data.claims}`;
+        setTimeout(() => onStart(debatePrompt, rounds, 'youtube'), 500);
+
+      } catch (err) {
+        alert('Failed to fetch video transcript. Make sure the link is valid.');
+        setLaunching(false);
+      }
+    } else {
+      setTimeout(() => onStart(topic.trim(), rounds, subject), 400);
+    }
   };
 
   const handleKeyDown = (e: KeyboardEvent) => {
@@ -70,6 +101,8 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
     ? { glow: 'from-emerald-400 to-teal-600', border: 'border-emerald-500/50', bg: 'bg-emerald-500', text: 'text-emerald-400', shadow: 'shadow-[0_0_15px_rgba(52,211,153,0.25)]' }
     : isPersonality 
     ? { glow: 'from-amber-400 to-orange-600', border: 'border-amber-500/50', bg: 'bg-amber-500', text: 'text-amber-400', shadow: 'shadow-[0_0_15px_rgba(245,158,11,0.25)]' }
+    : isYoutube
+    ? { glow: 'from-red-500 to-rose-600', border: 'border-red-500/50', bg: 'bg-red-600', text: 'text-red-400', shadow: 'shadow-[0_0_15px_rgba(239,68,68,0.25)]' }
     : { glow: 'from-cyan-400 to-blue-600', border: 'border-cyan-500/50', bg: 'bg-blue-600', text: 'text-cyan-400', shadow: 'shadow-[0_0_15px_rgba(0,212,255,0.25)]' };
 
   return (
@@ -92,7 +125,6 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
           from { transform: translateX(0); }
           to { transform: translateX(-33.333%); }
         }
-        /* Hide scrollbar strictly */
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
       `}} />
@@ -103,7 +135,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
         <div className="absolute bottom-[0%] right-[20%] w-[30vw] h-[30vh] bg-purple-600/10 rounded-full blur-[100px] mix-blend-screen animate-pulse delay-1000" />
       </div>
 
-      {/* ── Header (Fixed Height) ── */}
+      {/* ── Header ── */}
       <header className="shrink-0 h-[8vh] min-h-[50px] flex items-center justify-between px-4 sm:px-6 z-20">
         <ModeToggle mode={mode} setMode={setMode} disabled={disabled} />
         <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-md">
@@ -128,15 +160,13 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
         </div>
       </header>
 
-      {/* ── Main Content (Flexible Center, Shrinks to fit) ── */}
+      {/* ── Main Content ── */}
       <main className="flex-1 min-h-0 flex flex-col items-center justify-center px-4 z-10 w-full max-w-3xl mx-auto py-2">
         
-        {/* Title */}
         <motion.div variants={itemVariants} className="text-center mb-[2vh] shrink-0">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-[9px] font-bold tracking-widest uppercase border border-blue-500/20 mb-2">
             <Brain className="w-3 h-3 animate-pulse" /> Live AI Engine
           </span>
-          {/* font size clamps based on Viewport Height (vh) to prevent pushing card down */}
           <h1 className="font-orbitron font-black uppercase leading-[0.9] tracking-tighter text-[clamp(28px,7vh,70px)]">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-cyan-400 animate-gradient-x block">
               AI DEBATE
@@ -147,15 +177,14 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
           </h1>
         </motion.div>
 
-        {/* ── Ultra Compact Card ── */}
         <motion.div variants={itemVariants} className="w-full shrink">
           <div className="relative bg-white/[0.03] border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-xl shadow-2xl flex flex-col gap-[1.5vh]">
             
             {/* Tabs */}
-            <div className="flex p-1 bg-black/40 border border-white/5 rounded-xl shrink-0">
+            <div className="flex p-1 bg-black/40 border border-white/5 rounded-xl shrink-0 overflow-x-auto scrollbar-hide">
               <button
                 onClick={() => { setSubject('topic'); setTopic(''); }}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 sm:py-2 rounded-lg text-[9px] sm:text-[10px] font-bold tracking-widest uppercase transition-all ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 sm:py-2 px-2 rounded-lg text-[9px] sm:text-[10px] font-bold tracking-widest uppercase transition-all whitespace-nowrap ${
                   subject === 'topic' ? 'bg-blue-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
@@ -163,7 +192,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
               </button>
               <button
                 onClick={() => { setSubject('stock'); setTopic(''); }}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 sm:py-2 rounded-lg text-[9px] sm:text-[10px] font-bold tracking-widest uppercase transition-all ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 sm:py-2 px-2 rounded-lg text-[9px] sm:text-[10px] font-bold tracking-widest uppercase transition-all whitespace-nowrap ${
                   isStock ? 'bg-emerald-500 text-white shadow-md' : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
@@ -171,15 +200,24 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
               </button>
               <button
                 onClick={() => { setSubject('personality'); setTopic(''); }}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 sm:py-2 rounded-lg text-[9px] sm:text-[10px] font-bold tracking-widest uppercase transition-all ${
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 sm:py-2 px-2 rounded-lg text-[9px] sm:text-[10px] font-bold tracking-widest uppercase transition-all whitespace-nowrap ${
                   isPersonality ? 'bg-amber-500 text-white shadow-md' : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
                 <Flame className="w-3 h-3" /> Personality
               </button>
+              <button
+                onClick={() => { setSubject('youtube'); setTopic(''); }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 sm:py-2 px-2 rounded-lg text-[9px] sm:text-[10px] font-bold tracking-widest uppercase transition-all whitespace-nowrap ${
+                  isYoutube ? 'bg-red-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                {/* 🔥 यहाँ PlaySquare का इस्तेमाल किया है */}
+                <PlaySquare className="w-3 h-3" /> YouTube Clash
+              </button>
             </div>
 
-            {/* Input - Strictly 1 Row */}
+            {/* Input */}
             <div className="relative group shrink-0">
               <div className={`absolute -inset-0.5 bg-gradient-to-r ${themeColors.glow} rounded-xl blur opacity-20 transition duration-500`} />
               <textarea
@@ -187,19 +225,19 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
                 value={topic}
                 onChange={(e) => setTopic(isStock ? e.target.value.toUpperCase() : e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isStock ? 'e.g. SUZLON.NS' : isPersonality ? 'Enter a philosophical topic...' : 'Enter a debate topic...'}
+                placeholder={isYoutube ? 'Paste a YouTube video link here...' : isStock ? 'e.g. SUZLON.NS' : isPersonality ? 'Enter a philosophical topic...' : 'Enter a debate topic...'}
                 rows={1}
                 className={`relative w-full bg-[#0a0f1a] border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 text-[12px] sm:text-[13px] outline-none resize-none transition-all duration-300 focus:${themeColors.border} overflow-hidden`}
               />
             </div>
 
-            {/* Quick Examples (Single Line Horizontal Scroll) */}
+            {/* Quick Examples */}
             <div className="overflow-x-auto whitespace-nowrap pb-1 scrollbar-hide shrink-0">
               <div className="flex gap-2">
                 {examples.map((t) => (
                   <button
                     key={t}
-                    onClick={() => setTopic(t)}
+                    onClick={() => { if(!isYoutube) setTopic(t); }}
                     className="inline-block text-[9px] sm:text-[10px] px-3 py-1.5 rounded-md border border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white transition-all cursor-pointer font-medium"
                   >
                     {t}
@@ -208,19 +246,15 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
               </div>
             </div>
 
-            {/* Footer: Rounds + Start Button */}
+            {/* Footer */}
             <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/10 shrink-0">
-              
-              {/* Rounds */}
               <div className="flex items-center bg-black/30 p-1 rounded-xl border border-white/5 shrink-0">
                 {([3, 5, 7] as const).map((r) => (
                   <button
                     key={r}
                     onClick={() => setRounds(r)}
                     className={`px-3 py-1.5 rounded-lg text-[10px] font-bold font-orbitron transition-all ${
-                      rounds === r 
-                        ? 'bg-white/15 text-white' 
-                        : 'text-gray-500 hover:text-gray-300'
+                      rounds === r ? 'bg-white/15 text-white' : 'text-gray-500 hover:text-gray-300'
                     }`}
                   >
                     {r} R
@@ -228,7 +262,6 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
                 ))}
               </div>
 
-              {/* Start Button */}
               <motion.button
                 onClick={handleStart}
                 disabled={!canStart}
@@ -242,12 +275,13 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
               >
                 {launching ? (
                   <span className="flex items-center gap-2 animate-pulse">
-                    <Sparkles className="w-3.5 h-3.5" /> Launching...
+                    <Sparkles className="w-3.5 h-3.5" /> {isYoutube ? 'Analyzing Video...' : 'Launching...'}
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
-                    <Zap className="w-3.5 h-3.5 fill-current" />
-                    {isStock ? 'War-Room' : 'Start'}
+                    {/* 🔥 यहाँ भी PlaySquare का इस्तेमाल किया है */}
+                    {isYoutube ? <PlaySquare className="w-3.5 h-3.5 fill-current" /> : <Zap className="w-3.5 h-3.5 fill-current" />}
+                    {isYoutube ? 'Start Creator Clash' : isStock ? 'War-Room' : 'Start'}
                   </span>
                 )}
               </motion.button>
@@ -257,7 +291,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
         </motion.div>
       </main>
 
-      {/* ── Footer Ticker (Fixed Height) ── */}
+      {/* ── Footer Ticker ── */}
       <footer className="shrink-0 h-[4vh] min-h-[25px] w-full overflow-hidden border-t border-white/10 relative z-10 bg-black/20 flex items-center [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_92%,transparent)]">
         <div className="flex w-max gap-8 animate-[marquee_20s_linear_infinite]">
           {[...TICKER_ITEMS, ...TICKER_ITEMS, ...TICKER_ITEMS].map((item, idx) => (
@@ -267,7 +301,6 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
           ))}
         </div>
       </footer>
-
     </motion.div>
   );
 }
