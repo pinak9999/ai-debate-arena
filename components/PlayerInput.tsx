@@ -114,26 +114,38 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
   }, []);
 
   if (!waiting && !isListening) return null;
-
-  const handleToggleMic = () => {
+const handleToggleMic = () => {
     if (isListening) {
       recognitionRef.current?.stop();
       setIsListening(false);
     } else {
+      if (!recognitionRef.current) {
+        alert('आपके इस ब्राउज़र या डिवाइस पर वॉइस रिकग्निशन सपोर्ट नहीं कर रहा है। कृपया टाइप करके आर्ग्युमेंट दें।');
+        return;
+      }
+      
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel(); 
       }
       initialTextRef.current = currentValueRef.current.trim() ? currentValueRef.current.trim() + ' ' : '';
       
       try {
-        recognitionRef.current?.start();
+        recognitionRef.current.start();
         setIsListening(true);
       } catch (e) {
-        console.warn("Recognition already started", e);
+        console.warn("Recognition start failed or already active:", e);
+        // अगर पहले से चल रहा हो तो रीस्टार्ट करें
+        try {
+          recognitionRef.current.stop();
+          setTimeout(() => recognitionRef.current.start(), 200);
+          setIsListening(true);
+        } catch (err) {
+          alert('माइक्रोफोन शुरू करने में समस्या आ रही है। कृपया पेज रिफ्रेश करें।');
+          setIsListening(false);
+        }
       }
     }
   };
-
   const handleToggleWebcam = () => {
     setIsWebcamActive(!isWebcamActive);
   };
