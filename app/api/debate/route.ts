@@ -268,8 +268,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to fetch live market data.' }, { status: 500 });
       }
     }
-
-    // ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────
     // 1. DEBATE TURN
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'debate_turn') {
@@ -287,12 +286,13 @@ export async function POST(req: NextRequest) {
 
       let groundingBlock = '';
       if (isStockMode) {
+        // 🔥 FIX: AI को मजबूर करें कि वह सिर्फ प्राइस ही नहीं, बल्कि वॉल्यूम और मोमेंटम पर भी बात करे
         groundingBlock = stockContext
           ? `LIVE MARKET DATA for ${stockContext.symbol} (${stockContext.companyName || ''}):
 - Current Price: ₹${stockContext.currentPrice}
 - Change: ${stockContext.change} (${stockContext.changePercent}%)
-Use these EXACT numbers naturally in your argument.`
-          : `No live market feed available right now. Argue using general sector knowledge.`;
+CRITICAL: Use these EXACT numbers in your argument. Do not just state the price; analyze WHAT it means for momentum, valuation, or trend.`
+          : `No live market feed available right now. Argue using general macroeconomic and sector-specific financial knowledge.`;
       } else if (isPersonalityMode) {
         const lastMessageText = history.length > 0 ? history[history.length - 1].text : topic;
         const searchQuery = round === 1 ? topic : lastMessageText;
@@ -309,31 +309,33 @@ Use these EXACT numbers naturally in your argument.`
           : `Rely on strong logical deduction.`;
       }
 
-      // FIX: बेतुके उदाहरणों (जैसे Mental Health / BPD) पर सख्त पाबंदी और कड़े डिबेट नियम
       const antiRepetitionRule = `
 CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 1. NEVER start your response with formal/polite greetings. Jump directly into your argument naturally.
 2. NEVER CONCEDE. Never adopt the opponent's conclusion. You must fiercely defend your stance.
-3. BAN ON ROBOTIC CONNECTORS: Do NOT repeatedly use formal connector words (e.g. "Furthermore", "Moreover", or their equivalents in ${language}). Use natural, sharp, aggressive transitions like a real human college debater speaking ${language}.
+3. BAN ON ROBOTIC CONNECTORS: Do NOT repeatedly use formal connector words. Use natural, sharp, aggressive transitions like a real human debater.
 4. STRICT ANTI-REPETITION: DO NOT copy-paste sentences or exact phrases from previous rounds. Bring a NEW logical angle, NEW risk, or NEW metric every round.
-5. STRICT BAN ON BIZARRE ANALOGIES: Do NOT use mental health disorders (like Borderline Personality Disorder, depression, self-harm) as examples to explain emotional depth or creativity. Use real-world artistic, economic, or technological examples.
+5. STRICT BAN ON BIZARRE ANALOGIES: Do NOT use mental health disorders as examples. Use real-world artistic, economic, or technological examples.
 6. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", or "Opponent's logic". Just destroy their logic naturally.
       `.trim();
 
-      const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY (e.g., Devanagari for Hindi, Gujarati script for Gujarati, Gurmukhi for Punjabi, Bengali script for Bengali, Tamil script for Tamil, Telugu script for Telugu, Kannada script for Kannada, Malayalam script for Malayalam). DO NOT use Roman/English letters. Do not mix languages. Every single word must be authentically written in the native ${language} alphabet.`;
+      const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY. Do not use Roman/English letters. Every single word must be authentically written in the native ${language} alphabet.`;
 
       let roundInstruction = '';
       if (round === 1) {
         roundInstruction = isStockMode
-          ? 'OPENING POSITION: State your core investment thesis clearly with your strongest single argument. (60-80 words).'
+          // 🔥 FIX: स्टॉक के लिए Opening Pitch को एग्रेसिव बनाया
+          ? 'OPENING PITCH: State your core investment thesis clearly. Act like an elite Wall Street Hedge Fund Manager. Justify your bullish/bearish stance using the live data. (60-80 words).'
           : 'OPENING STATEMENT: Clearly define your core thesis. Present your strongest foundational argument with impact. (60-80 words).';
       } else if (round === totalRounds) {
         roundInstruction = isStockMode
-          ? 'FINAL CALL: No new data. Deliver your hard-hitting final recommendation summarizing why you win. (Max 50 words).'
+          // 🔥 FIX: फाइनल कॉल को ट्रेडर्स जैसी भाषा दी
+          ? 'FINAL CALL: No new data. Deliver your hard-hitting final trading recommendation. Tell the audience exactly why taking the opposite trade is a massive mistake. (Max 50 words).'
           : "CLOSING STATEMENT: Do not introduce new evidence. Powerfully summarize why your side wins. Deliver a hard-hitting final punchline. (Max 50 words).";
       } else {
         roundInstruction = isStockMode
-          ? "DIRECT CLASH: Attack the specific weakness in the opponent's last point, then reinforce your own case. (60-80 words)."
+          // 🔥 FIX: क्लैश के दौरान टेक्निकल और फंडामेंटल कमजोरियों पर वार करने को कहा
+          ? "DIRECT CLASH: Aggressively attack the specific fundamental or technical flaw in the opponent's last point. Then reinforce your own trade thesis with a new metric or market angle. (60-80 words)."
           : "DIRECT CLASH & REBUTTAL: 1. Directly attack the specific flaw in the opponent's last statement. 2. Reinforce your stance with a new layer of argument. (60-80 words).";
       }
 
@@ -356,21 +358,25 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
       const rlInstruction = buildRLInstruction(audienceScore, round, speaker);
 
       const opponentExtraInstruction = isStockMode
-        ? `As the BEAR, identify ONE fresh fundamental/valuation risk not mentioned before, and weave it naturally into your argument.`
+        // 🔥 FIX: Bear (Opponent) को सख्त हिदायत दी है कि वह सिर्फ नेगेटिव चीज़ें ढूंढे
+        ? `As the RUTHLESS BEAR, identify ONE fresh fundamental, valuation, or macroeconomic risk not mentioned before, and weave it naturally into your argument. Your goal is to create doubt.`
         : isPersonalityMode
         ? `Identify ONE ethical or historical/philosophical concern the proponent's argument overlooks, and weave it naturally into your argument.`
         : `Identify the ONE main factual counter-point or logical flaw in the proponent's latest argument (without naming it academically), and weave it naturally into your argument.`;
 
+      // 🔥 FIX: स्टॉक मोड के System Prompt को पूरी तरह से फाइनेंशियल ट्रेडिंग डेस्क जैसा बनाया है
       const systemPrompt = isStockMode
         ? `
-You are a ${speaker === 'proponent' ? 'SHARP BULLISH ANALYST' : 'CAUTIOUS RISK MANAGER (BEAR)'} for "${topic}".
+You are an elite, cut-throat Wall Street Financial Analyst debating the asset "${topic}".
+Role: ${speaker === 'proponent' ? 'AGGRESSIVE BULL (Proponent)' : 'RUTHLESS BEAR (Opponent)'}.
 ${groundingBlock}
-${speaker === 'opponent' ? opponentExtraInstruction : ''}
+${speaker === 'opponent' ? opponentExtraInstruction : 'As the AGGRESSIVE BULL, focus on growth, undervaluation, technical breakouts, or strong future fundamentals.'}
 ${antiRepetitionRule}
 ${rlInstruction}
 ${roundInstruction}
-${speaker === 'opponent' ? 'CRITICAL: You are the BEAR. NEVER conclude that the stock will recover. Always conclude it is a risk.' : ''}
-${langInstruction} ${speaker === 'proponent' ? 'Confident, trading desk analyst tone.' : 'Sound professional, not a cheerleader.'}
+${speaker === 'opponent' ? 'CRITICAL: You are the BEAR. NEVER conclude that the stock will recover. Always conclude it is a toxic asset or overvalued.' : ''}
+${langInstruction}
+Tone: Highly analytical, sharp, authoritative trading-desk jargon. Sound like a professional fund manager, not a generic AI.
         `.trim()
         : isPersonalityMode
         ? `
@@ -393,11 +399,12 @@ ${roundInstruction}
 ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         `.trim();
 
-      const finalMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly and STRICTLY in ${language} native script without formal greetings and avoid robotic connector words.` }];
+      // 🔥 FIX: LLM को आखिरी मैसेज में फिर से भाषा की याद दिलाना ताकि वह हिंदी न भूले
+      const finalMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) without formal greetings and avoid robotic connector words.` }];
 
       const { text: rawOutput } = await generateText({
         model: groq('llama-3.1-8b-instant'),
-        temperature: 0.7,
+        temperature: 0.7, // 0.7 ठीक है, इससे क्रिएटिविटी बनी रहेगी
         system: systemPrompt,
         messages: finalMessages as any,
       });
@@ -405,7 +412,6 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       const cleanOutput = stripMetaCommentary(stripFakeCitations(rawOutput));
       return toManualTextStream(cleanOutput);
     }
-
     // ─────────────────────────────────────────────────────────────────
     // 2. JUDGE CRITIQUE
     // ─────────────────────────────────────────────────────────────────
