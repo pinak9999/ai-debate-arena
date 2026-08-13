@@ -98,8 +98,9 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
           currentValueRef.current = fullText;
         };
 
-        recognition.onerror = (e: any) => {
-          console.error("Speech recognition error", e);
+     recognition.onerror = (e: any) => {
+          console.error("Speech recognition error details -> Type:", e.error, "Message:", e.message);
+          alert(`Mic Error: ${e.error}`); // इससे स्क्रीन पर तुरंत पॉप-अप आ जाएगा कि असली दिक्कत क्या है
           setIsListening(false);
         };
 
