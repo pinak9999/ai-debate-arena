@@ -307,7 +307,7 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 3. BAN ON ROBOTIC CONNECTORS: Do NOT repeatedly use formal connector words. Use natural, sharp, aggressive transitions like a real human debater.
 4. STRICT ANTI-REPETITION: DO NOT copy-paste sentences or exact phrases from previous rounds. Bring a NEW logical angle, NEW risk, or NEW metric every round.
 5. STRICT BAN ON BIZARRE ANALOGIES: Do NOT use mental health disorders as examples. Use real-world artistic, economic, or technological examples.
-6. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", or "Opponent's logic". Just destroy their logic naturally.
+6. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", "Opponent's logic" or "Appeal to fear". Just destroy their logic naturally.
       `.trim();
 
       const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY. Do not use Roman/English letters. Every single word must be authentically written in the native ${language} alphabet.`;
@@ -412,6 +412,9 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       return NextResponse.json({ critique: stripFakeCitations(text) });
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // 3. JUDGE VERDICT
+    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'judge_verdict') {
       const { topic, history = [], mode = 'topic', language = 'Hindi', audienceScore } = body;
       const biasNote = mode === 'personality'
@@ -425,13 +428,25 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
 
       let proPenalty = 0;
       let oppPenalty = 0;
+      
+      // Safety net: Catch toxic keywords manually to match round_score logic
+      const toxicKeywords = ['toxic asset', 'time bomb', 'catastrophic', 'ruin', 'house of cards', 'devastating', 'disaster', 'reckless', 'collapse', 'ticking'];
+
       history.forEach((msg: { speaker: string; text: string }) => {
+        let deduction = 0;
         const penaltyMatch = msg.text.match(/\[SYSTEM NOTE: PENALTY APPLIED.*?(-\d+)/i);
         if (penaltyMatch && penaltyMatch[1]) {
-          const deduction = Math.abs(parseInt(penaltyMatch[1], 10));
-          if (msg.speaker === 'proponent') proPenalty += deduction;
-          if (msg.speaker === 'opponent') oppPenalty += deduction;
+          deduction += Math.abs(parseInt(penaltyMatch[1], 10));
         }
+
+        const lowerText = msg.text.toLowerCase();
+        const hasToxic = toxicKeywords.some(kw => lowerText.includes(kw));
+        if (hasToxic && deduction === 0) {
+          deduction += 10;
+        }
+
+        if (msg.speaker === 'proponent') proPenalty += deduction;
+        if (msg.speaker === 'opponent') oppPenalty += deduction;
       });
 
       const judgePrompt = `You are a strict, expert debate judge. Evaluate the FULL debate on Topic: "${topic}"${biasNote}
@@ -447,7 +462,7 @@ Score EACH debater SEPARATELY across FOUR distinct categories, each out of 100.
 - "evidence": use of concrete facts and data.
 
 CRITICAL RULES:
-1. If a debater relied on EXTREME fear-mongering (e.g., "toxic asset", "ticking time bomb", "catastrophic") without hard data, heavily penalize their LOGIC score.
+1. If a debater relied on EXTREME fear-mongering (e.g., "toxic asset", "ticking time bomb", "catastrophic", "house of cards") without hard data, heavily penalize their LOGIC score.
 2. You must account for cumulative performance. Do not just look at the last round.
 3. Ensure a clear winner unless it is absolutely identical in quality.
 
@@ -516,7 +531,10 @@ Respond STRICTLY with JSON ONLY, no extra text:
       });
     }
 
-    // 🔥 FIX 2: HARD MATH OVERRIDE FOR GRAPH SCORING
+    // ─────────────────────────────────────────────────────────────────
+    // 4. ROUND SCORE
+    // 🔥 THE ULTIMATE FIX: Race Condition Bypass for Instant Graph Crash!
+    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'round_score') {
       const { topic, history = [], round, language = 'Hindi' } = body;
 
@@ -525,53 +543,69 @@ Respond STRICTLY with JSON ONLY, no extra text:
       let proRoundPenalty = 0;
       let oppRoundPenalty = 0;
 
+      // ये वो डरावने शब्द हैं जिनपर पेनाल्टी लगती है
+      const toxicKeywords = ['toxic asset', 'time bomb', 'catastrophic', 'ruin', 'house of cards', 'devastating', 'disaster', 'reckless', 'collapse', 'ticking'];
+
       roundMessages.forEach((msg: { speaker: string; text: string }) => {
+        let deduction = 0;
+        
+        // चेक करें कि क्या UI ने पेनाल्टी भेज दी है?
         const match = msg.text.match(/\[SYSTEM NOTE: PENALTY APPLIED.*?(-\d+)/i);
         if (match && match[1]) {
-          const deduction = Math.abs(parseInt(match[1], 10));
-          if (msg.speaker === 'proponent') { proRoundPenalty += deduction; }
-          if (msg.speaker === 'opponent') { oppRoundPenalty += deduction; }
+          deduction += Math.abs(parseInt(match[1], 10));
         }
+
+        // 🔴 MAGIC FIX: अगर UI स्लो है और उसने पेनाल्टी नहीं भेजी, तो हम खुद शब्द ढूंढकर पेनाल्टी मार देंगे!
+        const lowerText = msg.text.toLowerCase();
+        const hasToxic = toxicKeywords.some(kw => lowerText.includes(kw));
+        if (hasToxic && deduction === 0) {
+          deduction += 10; // भयंकर शब्दों पर तुरंत 10 नंबर कटेंगे
+        }
+
+        if (msg.speaker === 'proponent') { proRoundPenalty += deduction; }
+        if (msg.speaker === 'opponent') { oppRoundPenalty += deduction; }
       });
 
       const transcriptForRound = roundMessages
         .map((msg: { speaker: string; text: string }) => `${msg.speaker}: ${msg.text}`)
         .join('\n\n');
 
-      const prompt = `You are scoring ONLY Round ${round} of a debate on "${topic}" (conducted in ${language}).
+      const prompt = `You are a STRICT debate judge scoring ONLY Round ${round} of a debate on "${topic}".
 
 Round ${round} statements:
 ${transcriptForRound || '(No statements found for this round)'}
 
-Score each debater's performance in THIS ROUND ONLY, between 60 and 95. 
+Score each debater's performance in THIS ROUND ONLY on a scale of 60 to 95. 
 CRITICAL RULES:
-1. Base it strictly on logical coherence and concrete data.
-2. If a debater has a [SYSTEM NOTE: PENALTY APPLIED] in their text, you MUST score them poorly.
-3. Do not reward aggressive but baseless rhetoric.
+1. If a debater uses extreme fear-mongering rhetoric without concrete numerical data, their score MUST be between 60 and 70.
+2. If a debater uses solid financial metrics calmly, score them between 80 and 95.
 
 Respond STRICTLY with JSON ONLY: {"pro": <number>, "opp": <number>}`;
 
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
-        temperature: 0.2, // Temperature low कर दी है ताकि AI ज़्यादा सटीक नंबर दे
+        temperature: 0.1, // टेम्परेचर 0.1 ताकि AI नंबर देने में सख्त रहे
         prompt
       });
       
-      const parsed = safeJsonParse(text, { pro: 75, opp: 75 });
+      const parsed = safeJsonParse(text, { pro: 80, opp: 80 });
       
       let finalPro = parsed.pro;
       let finalOpp = parsed.opp;
 
-      // 🔴 THE MAGIC FIX: अगर पेनाल्टी लगी है, तो AI के दिए नंबर को फाड़कर सीधा 65 पर गिरा दो!
-      if (proRoundPenalty > 0) finalPro = Math.min(finalPro, 65) - proRoundPenalty;
-      if (oppRoundPenalty > 0) finalOpp = Math.min(finalOpp, 65) - oppRoundPenalty;
+      // 🔴 THE MAGIC OVERRIDE: जैसे ही पेनाल्टी लगेगी, नंबर सीधा 60-65 की लाइन में आ गिरेंगे!
+      if (proRoundPenalty > 0) finalPro = Math.min(finalPro, 72) - proRoundPenalty;
+      if (oppRoundPenalty > 0) finalOpp = Math.min(finalOpp, 72) - oppRoundPenalty;
 
       return NextResponse.json({
-        pro: clampScore(finalPro, 75, 30, 100),
-        opp: clampScore(finalOpp, 75, 30, 100),
+        pro: clampScore(finalPro, 80, 40, 100),
+        opp: clampScore(finalOpp, 80, 40, 100),
       });
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // 5. FALLACY & TONE CHECK
+    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text, topic, language = 'Hindi' } = body;
       const prompt = `You are an expert, UNBIASED Debate Moderator. Analyze this statement (written in ${language}) for GENUINE logical fallacies ONLY.
@@ -619,6 +653,9 @@ Respond STRICTLY with JSON ONLY:
       return NextResponse.json(finalParsed);
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // 6. FACT CHECK
+    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fact_check') {
       const { claim, language = 'Hindi' } = body;
       try {
