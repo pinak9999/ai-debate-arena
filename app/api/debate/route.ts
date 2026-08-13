@@ -2,9 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
 import { createGroq } from '@ai-sdk/groq';
 
-// FIX: Hobby plan पर Node.js serverless function का hard limit 10 सेकंड है,
-// इसे override नहीं किया जा सकता (60 सिर्फ Pro plan पर काम करता). इसलिए maxDuration
-// यहाँ 10 रखा है (जो वैसे भी default है) — असली fix नीचे calls कम करने में है।
 export const maxDuration = 10;
 
 const groq = createGroq({
@@ -50,18 +47,22 @@ function toManualTextStream(text: string): Response {
   });
 }
 
-// FIX: text से आखिरी 6-8 meaningful words निकालने का हल्का, LLM-free तरीका
-function quickSearchQuery(text: string): string {
-  return text
-    .replace(/[।!?,.\n]/g, ' ')
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 8)
-    .join(' ')
-    .trim();
+// 🔥 FIX 1: LLM-Powered Smart Query Extractor (Stops Medical/Random RAG Hallucinations!)
+async function generateSearchQuery(text: string): Promise<string> {
+  try {
+    const { text: query } = await generateText({
+      model: groq('llama-3.1-8b-instant'),
+      prompt: `Extract the core factual entity, company name, or subject from this text for a web search. If it mentions a stock ticker (e.g., PWL.NS), output the company name and the word "stock". \nText: "${text.slice(0, 300)}"\nOutput ONLY 3-5 English keywords. No quotes, no intro.`,
+      temperature: 0.1,
+    });
+    return query.replace(/["']/g, '').trim();
+  } catch {
+    // Fallback
+    return text.replace(/[।!?,.\n]/g, ' ').split(/\s+/).filter(Boolean).slice(0, 6).join(' ').trim();
+  }
 }
 
-// ─── WIKIPEDIA GROUNDING (RAG) — Topic Mode ───
+// ─── WIKIPEDIA GROUNDING (RAG) ───
 
 async function searchWiki(lang: 'hi' | 'en', q: string) {
   try {
@@ -99,7 +100,7 @@ async function fetchWikiSnippet(query: string): Promise<{ title: string; snippet
 }
 
 async function groundWithQuery(text: string): Promise<{ title: string; snippet: string; url: string | null } | null> {
-  const query = quickSearchQuery(text);
+  const query = await generateSearchQuery(text);
   if (!query) return null;
   return fetchWikiSnippet(query);
 }
@@ -146,7 +147,8 @@ async function searchTavily(query: string): Promise<{ answer: string | null; sou
   }
 }
 
-async function groundWithTavily(query: string): Promise<{ snippet: string; sources: TavilySource[] } | null> {
+async function groundWithTavily(text: string): Promise<{ snippet: string; sources: TavilySource[] } | null> {
+  const query = await generateSearchQuery(text);
   const result = await searchTavily(query);
   if (!result || (!result.answer && result.sources.length === 0)) return null;
 
@@ -268,7 +270,8 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: 'Failed to fetch live market data.' }, { status: 500 });
       }
     }
-// ─────────────────────────────────────────────────────────────────
+
+    // ─────────────────────────────────────────────────────────────────
     // 1. DEBATE TURN
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'debate_turn') {
@@ -286,7 +289,6 @@ export async function POST(req: NextRequest) {
 
       let groundingBlock = '';
       if (isStockMode) {
-        // 🔥 FIX: AI को मजबूर करें कि वह सिर्फ प्राइस ही नहीं, बल्कि वॉल्यूम और मोमेंटम पर भी बात करे
         groundingBlock = stockContext
           ? `LIVE MARKET DATA for ${stockContext.symbol} (${stockContext.companyName || ''}):
 - Current Price: ₹${stockContext.currentPrice}
@@ -295,15 +297,13 @@ CRITICAL: Use these EXACT numbers in your argument. Do not just state the price;
           : `No live market feed available right now. Argue using general macroeconomic and sector-specific financial knowledge.`;
       } else if (isPersonalityMode) {
         const lastMessageText = history.length > 0 ? history[history.length - 1].text : topic;
-        const searchQuery = round === 1 ? topic : lastMessageText;
-        const tavilyData = await groundWithTavily(searchQuery);
+        const tavilyData = await groundWithTavily(lastMessageText);
         groundingBlock = tavilyData
           ? `LIVE INTERNET RESEARCH: \n${tavilyData.snippet}\nIncorporate current facts naturally.`
           : `Rely on strong reasoning and logical deduction.`;
       } else {
         const lastMessageText = history.length > 0 ? history[history.length - 1].text : topic;
-        const searchContext = round === 1 ? topic : lastMessageText;
-        const wikiData = await groundWithQuery(searchContext);
+        const wikiData = await groundWithQuery(lastMessageText);
         groundingBlock = wikiData
           ? `FACTUAL EVIDENCE: "${wikiData.snippet}"\nIncorporate relevant facts naturally.`
           : `Rely on strong logical deduction.`;
@@ -324,17 +324,14 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
       let roundInstruction = '';
       if (round === 1) {
         roundInstruction = isStockMode
-          // 🔥 FIX: स्टॉक के लिए Opening Pitch को एग्रेसिव बनाया
           ? 'OPENING PITCH: State your core investment thesis clearly. Act like an elite Wall Street Hedge Fund Manager. Justify your bullish/bearish stance using the live data. (60-80 words).'
           : 'OPENING STATEMENT: Clearly define your core thesis. Present your strongest foundational argument with impact. (60-80 words).';
       } else if (round === totalRounds) {
         roundInstruction = isStockMode
-          // 🔥 FIX: फाइनल कॉल को ट्रेडर्स जैसी भाषा दी
           ? 'FINAL CALL: No new data. Deliver your hard-hitting final trading recommendation. Tell the audience exactly why taking the opposite trade is a massive mistake. (Max 50 words).'
           : "CLOSING STATEMENT: Do not introduce new evidence. Powerfully summarize why your side wins. Deliver a hard-hitting final punchline. (Max 50 words).";
       } else {
         roundInstruction = isStockMode
-          // 🔥 FIX: क्लैश के दौरान टेक्निकल और फंडामेंटल कमजोरियों पर वार करने को कहा
           ? "DIRECT CLASH: Aggressively attack the specific fundamental or technical flaw in the opponent's last point. Then reinforce your own trade thesis with a new metric or market angle. (60-80 words)."
           : "DIRECT CLASH & REBUTTAL: 1. Directly attack the specific flaw in the opponent's last statement. 2. Reinforce your stance with a new layer of argument. (60-80 words).";
       }
@@ -358,13 +355,11 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
       const rlInstruction = buildRLInstruction(audienceScore, round, speaker);
 
       const opponentExtraInstruction = isStockMode
-        // 🔥 FIX: Bear (Opponent) को सख्त हिदायत दी है कि वह सिर्फ नेगेटिव चीज़ें ढूंढे
         ? `As the RUTHLESS BEAR, identify ONE fresh fundamental, valuation, or macroeconomic risk not mentioned before, and weave it naturally into your argument. Your goal is to create doubt.`
         : isPersonalityMode
         ? `Identify ONE ethical or historical/philosophical concern the proponent's argument overlooks, and weave it naturally into your argument.`
         : `Identify the ONE main factual counter-point or logical flaw in the proponent's latest argument (without naming it academically), and weave it naturally into your argument.`;
 
-      // 🔥 FIX: स्टॉक मोड के System Prompt को पूरी तरह से फाइनेंशियल ट्रेडिंग डेस्क जैसा बनाया है
       const systemPrompt = isStockMode
         ? `
 You are an elite, cut-throat Wall Street Financial Analyst debating the asset "${topic}".
@@ -399,12 +394,11 @@ ${roundInstruction}
 ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         `.trim();
 
-      // 🔥 FIX: LLM को आखिरी मैसेज में फिर से भाषा की याद दिलाना ताकि वह हिंदी न भूले
       const finalMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) without formal greetings and avoid robotic connector words.` }];
 
       const { text: rawOutput } = await generateText({
         model: groq('llama-3.1-8b-instant'),
-        temperature: 0.7, // 0.7 ठीक है, इससे क्रिएटिविटी बनी रहेगी
+        temperature: 0.7,
         system: systemPrompt,
         messages: finalMessages as any,
       });
@@ -412,6 +406,7 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       const cleanOutput = stripMetaCommentary(stripFakeCitations(rawOutput));
       return toManualTextStream(cleanOutput);
     }
+
     // ─────────────────────────────────────────────────────────────────
     // 2. JUDGE CRITIQUE
     // ─────────────────────────────────────────────────────────────────
@@ -431,10 +426,6 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
 
     // ─────────────────────────────────────────────────────────────────
     // 3. JUDGE VERDICT
-    // FIX #1: कंसिस्टेंट स्कोरिंग और असली मैथमेटिकल पेनल्टी (पहले से था)
-    // FIX #2 (NEW): अब LLM से हर category (logic/creativity/persuasion/evidence)
-    //   का ALAG-ALAG score माँगा जाता है — पहले सिर्फ 1 overall score को
-    //   4 बार copy कर दिया जाता था, इसलिए UI में सारी bars same दिखती थीं।
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'judge_verdict') {
       const { topic, history = [], mode = 'topic', language = 'Hindi' } = body;
@@ -442,7 +433,6 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         ? '\nIMPORTANT: Remain STRICTLY NEUTRAL between the Aggressive Data-Driven debater and the Philosophical debater. Score only on logical strength, evidence, and direct engagement.'
         : '';
 
-      // FIX: ट्रांसक्रिप्ट से ऑटोमैटिकली पेनल्टी पॉइंट्स गिनना ताकि वो हकीकत में कटें
       let proPenalty = 0;
       let oppPenalty = 0;
       history.forEach((msg: { speaker: string; text: string }) => {
@@ -459,23 +449,23 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
 Transcript:
 ${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}
 
-Score EACH debater SEPARATELY across FOUR distinct categories, each out of 100. Do NOT give the same number to every category — differentiate based on what actually happened in the transcript:
-- "logic": strength and coherence of reasoning, validity of claims, absence of contradictions.
-- "creativity": originality of angles/examples, avoiding repetition round to round.
-- "persuasion": rhetorical force, confidence, how compelling the delivery was.
-- "evidence": use of concrete facts, data, or specific real-world examples (vague claims score lower here).
+Score EACH debater SEPARATELY across FOUR distinct categories, each out of 100.
+- "logic": coherence of reasoning and absence of extreme/irrational rhetoric.
+- "creativity": originality of angles/examples.
+- "persuasion": rhetorical force and confidence.
+- "evidence": use of concrete facts and data.
 
-RULES:
-1. Scores must reflect REAL differences between the two debaters — avoid defaulting to near-identical numbers unless performance was genuinely equal.
-2. DO NOT artificially inflate a closing round. If a debater was trailing, they should only overtake if their closing was exceptionally superior.
-3. If fallacies (Appeal to Fear/Emotion) were used, that should already reduce their own internal consistency — reflect it mainly in the "logic" category.
+CRITICAL RULES:
+1. If a debater relied on EXTREME fear-mongering (e.g., "toxic asset", "ticking time bomb", "catastrophic") without hard data, heavily penalize their LOGIC score.
+2. You must account for cumulative performance. Do not just look at the last round.
+3. Ensure a clear winner unless it is absolutely identical in quality.
 
 Respond STRICTLY with JSON ONLY, no extra text:
 {
   "winner": "proponent" | "opponent" | "tie",
   "proponent": {"logic": 0, "creativity": 0, "persuasion": 0, "evidence": 0},
   "opponent": {"logic": 0, "creativity": 0, "persuasion": 0, "evidence": 0},
-  "reasoning": "summary written STRICTLY in ${language} native script explaining the score differences and mentioning any penalties or fallacies."
+  "reasoning": "summary written STRICTLY in ${language} native script explaining the score differences."
 }`;
 
       const { text } = await generateText({
@@ -492,7 +482,6 @@ Respond STRICTLY with JSON ONLY, no extra text:
       };
       const object = safeJsonParse(text, fallbackShape);
 
-      // FIX: हर category को individually clamp करना, ताकि LLM की गलत/missing values भी safe रहें
       const proLogic = clampScore(object?.proponent?.logic, 75);
       const proCreativity = clampScore(object?.proponent?.creativity, 75);
       const proPersuasion = clampScore(object?.proponent?.persuasion, 75);
@@ -503,9 +492,6 @@ Respond STRICTLY with JSON ONLY, no extra text:
       const oppPersuasion = clampScore(object?.opponent?.persuasion, 75);
       const oppEvidence = clampScore(object?.opponent?.evidence, 75);
 
-      // FIX: Hardcoded fallacy penalty ab सीधे "logic" category से कटती है (सही जगह
-      // पर, क्योंकि fallacy असल में logical flaw है) — फिर overall उसी penalized
-      // logic को शामिल करके average निकाला जाता है।
       const proLogicPenalized = Math.max(10, proLogic - proPenalty);
       const oppLogicPenalized = Math.max(10, oppLogic - oppPenalty);
 
@@ -541,11 +527,7 @@ Respond STRICTLY with JSON ONLY, no extra text:
 
     // ─────────────────────────────────────────────────────────────────
     // 4. ROUND SCORE
-    // FIX: पहले पूरी history (सारे rounds) भेजी जाती थी और सिर्फ कहा जाता था
-    //   "rate round X" — इससे LLM हर बार लगभग same generic number देता था
-    //   (screenshot में हर round पर Opponent:80 / Proponent:75 hardcoded जैसा
-    //   दिख रहा था)। अब सिर्फ USI round के messages भेजे जाते हैं, ताकि score
-    //   सच में उसी round के content पर based हो और round-to-round बदले।
+    // 🔥 FIX 2: Aligned Round Score criteria with Final Judge criteria
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'round_score') {
       const { topic, history = [], round, language = 'Hindi' } = body;
@@ -560,7 +542,11 @@ Respond STRICTLY with JSON ONLY, no extra text:
 Round ${round} statements:
 ${transcriptForRound || '(No statements found for this round)'}
 
-Score each debater's performance in THIS ROUND ONLY, between 55 and 95. Base it strictly on: specific evidence/examples used, logical coherence, and strength of any rebuttal made THIS round. Do not default to a generic middle value — if one side clearly argued better in this specific round, reflect that gap in the numbers (a difference of at least 5-10 points is expected unless truly balanced).
+Score each debater's performance in THIS ROUND ONLY, between 55 and 95. 
+CRITICAL RULES:
+1. Base it strictly on logical coherence and strength of rebuttal. 
+2. HEAVILY PENALIZE extreme fear-mongering (e.g., "toxic asset", "ticking time bomb", "catastrophic") or baseless extreme rhetoric. If a debater uses such words without data, score them low (below 70).
+3. Reward calm, data-driven reasoning.
 
 Respond STRICTLY with JSON ONLY: {"pro": <number>, "opp": <number>}`;
 
@@ -578,36 +564,26 @@ Respond STRICTLY with JSON ONLY: {"pro": <number>, "opp": <number>}`;
 
     // ─────────────────────────────────────────────────────────────────
     // 5. FALLACY & TONE CHECK
-    // FIX: पहले normal argumentative statements (जैसे "AI creativity replace
-    //   कर देगा") भी "Appeal to Fear" के नाम पर flag हो रही थीं। अब rules को
-    //   ज़्यादा strict/specific बनाया — सिर्फ genuinely manipulative,
-    //   catastrophic या alarmist भाषा को ही fallacy माना जाएगा, सामान्य
-    //   position/claim को नहीं। साथ ही explanation में exact फ़्रेज़ quote
-    //   करना ज़रूरी किया ताकि false-positive कम हों।
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text, topic, language = 'Hindi' } = body;
-      const prompt = `You are an expert, UNBIASED and CONSERVATIVE Debate Moderator. Analyze this statement (written in ${language}) for GENUINE logical fallacies ONLY.
+      const prompt = `You are an expert, UNBIASED Debate Moderator. Analyze this statement (written in ${language}) for GENUINE logical fallacies ONLY.
 Topic: "${topic}"
 Statement: "${text}"
 
-CRITICAL DEBATE RULES — READ CAREFULLY:
-1. A normal argumentative claim (e.g. "X will replace Y", "X is a risk to Y") is NOT a fallacy — it is a standard debate position, even if it sounds negative or concerning. DO NOT flag ordinary predictions or position statements.
-2. Counter-arguments and rebuttals are NOT fallacies.
-3. Citing sources or data is NOT "Appeal to Authority".
-4. Passionate or confident tone is NOT "Appeal to Emotion" — it must involve genuinely manipulative language.
-5. ONLY flag a GENUINE fallacy if the statement meets a HIGH bar:
-   - Ad Hominem (direct personal insult of the opponent, not their argument) -> Penalty: 10
-   - Strawman (blatantly misrepresenting what the opponent actually said) -> Penalty: 8
-   - Appeal to Fear / Existential Threat (uses exaggerated, catastrophic, alarmist language SPECIFICALLY to bypass logic — e.g. "humanity will be destroyed forever", "we will all suffer irreversibly" — NOT a normal risk claim) -> Penalty: 5
-   - Appeal to Emotion (explicitly substitutes emotional manipulation FOR logical reasoning, e.g. invoking extreme suffering with no supporting logic) -> Penalty: 5
-6. If in doubt, or if it's a normal (even strongly worded) debate argument, set "hasFallacy": false and "penalty": 0. False positives are worse than missing a borderline case.
-7. If "hasFallacy" is true, the "explanation" MUST quote the exact fallacious phrase (under 15 words) from the statement that justifies the flag.
+CRITICAL DEBATE RULES:
+1. A normal argumentative claim (e.g. "X will replace Y") is NOT a fallacy.
+2. ONLY flag a GENUINE fallacy if the statement meets a HIGH bar:
+   - Ad Hominem -> Penalty: 10
+   - Strawman -> Penalty: 8
+   - Appeal to Fear / Existential Threat (uses exaggerated, catastrophic, alarmist language SPECIFICALLY to bypass logic — e.g. "toxic asset", "ticking time bomb") -> Penalty: 5
+   - Appeal to Emotion -> Penalty: 5
+3. If in doubt, set "hasFallacy": false and "penalty": 0. 
 
-Calculate 'Aggression Score' (0-100) and 'Logic Score' (0-100) regardless of fallacy verdict.
+Calculate 'Aggression Score' (0-100) and 'Logic Score' (0-100).
 
 Respond STRICTLY with JSON ONLY:
-{"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation written STRICTLY in ${language} Native Script, quoting the exact phrase if hasFallacy is true", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
+{"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation strictly in ${language}", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
 
       const { text: result } = await generateText({
         model: groq('llama-3.1-8b-instant'),
@@ -638,11 +614,12 @@ Respond STRICTLY with JSON ONLY:
 
     // ─────────────────────────────────────────────────────────────────
     // 6. FACT CHECK
+    // 🔥 FIX 4: Implemented Smart Query generation to stop Medical Hallucinations
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fact_check') {
       const { claim, language = 'Hindi' } = body;
       try {
-        const primaryQuery = quickSearchQuery(claim);
+        const primaryQuery = await generateSearchQuery(claim);
 
         const tavilyResult = await searchTavily(primaryQuery);
         if (tavilyResult && (tavilyResult.answer || tavilyResult.sources.length > 0)) {
