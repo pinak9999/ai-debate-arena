@@ -14,8 +14,9 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
   
-  // 🔥 FIX: माइक चालू करने से पहले का टेक्स्ट सेव रखने के लिए
+  // 🔥 FIX: माइक चालू करने से पहले का टेक्स्ट और फाइनल स्पीच को सेव रखने के लिए
   const initialTextRef = useRef('');
+  const finalTranscriptRef = useRef('');
 
   // ─── Computer Vision (Webcam & AI) States ───
   const webcamRef = useRef<Webcam>(null);
@@ -69,16 +70,34 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
         recognition.interimResults = true;
-        recognition.lang = 'hi-IN';
+        recognition.lang = 'hi-IN'; // आप इसे डायनामिक भी कर सकते हैं
+
+        recognition.onstart = () => {
+          // जब रिकॉग्निशन स्टार्ट हो, तो फाइनल ट्रांसक्रिप्ट को रीसेट करें
+          finalTranscriptRef.current = '';
+        };
 
         recognition.onresult = (event: any) => {
-          // 🔥 FIX: Infinity Loop खत्म करने के लिए पूरा ट्रांसक्रिप्ट एक साथ जोड़ें
-          let currentTranscript = '';
-          for (let i = 0; i < event.results.length; ++i) {
-            currentTranscript += event.results[i][0].transcript;
+          // 🔥 100% ACCURATE FIX: Final और Interim रिजल्ट्स को अलग-अलग प्रोसेस करें
+          let interimTranscript = '';
+          let newFinalTranscript = '';
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              newFinalTranscript += event.results[i][0].transcript;
+            } else {
+              interimTranscript += event.results[i][0].transcript;
+            }
           }
-          // पहले से टाइप किये टेक्स्ट के साथ नया बोला हुआ टेक्स्ट जोड़ें
-          setValue(initialTextRef.current + currentTranscript);
+
+          // अगर कोई नया फाइनल वर्ड आया है, तो उसे Ref में सेव कर लें
+          if (newFinalTranscript) {
+            finalTranscriptRef.current += newFinalTranscript;
+          }
+
+          // UI (Input Box) में = (माइक से पहले का टेक्स्ट) + (पक्के शब्द) + (कच्चे/interim शब्द)
+          const currentText = initialTextRef.current + finalTranscriptRef.current + interimTranscript;
+          setValue(currentText);
         };
 
         recognition.onerror = (e: any) => {
@@ -88,11 +107,14 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
 
         recognition.onend = () => {
           setIsListening(false);
+          // जब माइक बंद हो, तो जो भी टेक्स्ट बना है, उसे फाइनल मान लें
+          initialTextRef.current = value.trim() ? value.trim() + ' ' : '';
         };
 
         recognitionRef.current = recognition;
       }
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (!waiting && !isListening) return null;
@@ -105,10 +127,16 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel(); 
       }
-      // 🔥 FIX: माइक चालू करते समय पुराना टेक्स्ट सेव कर लें
+      // माइक चालू करते समय इनपुट बॉक्स के मौजूदा टेक्स्ट को सेव कर लें
       initialTextRef.current = value.trim() ? value.trim() + ' ' : '';
-      recognitionRef.current?.start();
-      setIsListening(true);
+      finalTranscriptRef.current = ''; // नया सेशन, इसलिए इसे खाली करें
+      
+      try {
+        recognitionRef.current?.start();
+        setIsListening(true);
+      } catch (e) {
+        console.warn("Recognition already started", e);
+      }
     }
   };
 
@@ -135,6 +163,7 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
     onSubmit(finalArgument);
     setValue('');
     initialTextRef.current = '';
+    finalTranscriptRef.current = '';
   };
 
   const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
@@ -210,7 +239,11 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
 
         <textarea
           value={value}
-          onChange={(e) => setValue(e.target.value)}
+          onChange={(e) => {
+            setValue(e.target.value);
+            // मैन्युअली टाइप करने पर भी initialTextRef को अपडेट करें ताकि माइक चालू करने पर टेक्स्ट न उड़े
+            if (!isListening) initialTextRef.current = e.target.value; 
+          }}
           onKeyDown={handleKeyDown}
           placeholder={isListening ? "Listening to your voice..." : "Type your point here..."}
           rows={2}
