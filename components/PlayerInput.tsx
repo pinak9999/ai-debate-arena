@@ -14,7 +14,7 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
   
-  // 🔥 FIX 1: Stale State से बचने के लिए लेटेस्ट वैल्यू का Ref
+  // Stale State से बचने के लिए लेटेस्ट वैल्यू का Ref
   const currentValueRef = useRef('');
   useEffect(() => {
     currentValueRef.current = value;
@@ -73,20 +73,25 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
       if (SpeechRecognition) {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
-        recognition.interimResults = true;
+        
+        // 🔥 MASTER FIX: interimResults को false कर दिया गया है। 
+        // अब यह तभी टाइप करेगा जब आप एक वाक्य बोलकर रुकेंगे। इससे Echo/Loop हमेशा के लिए खत्म हो जाएगा।
+        recognition.interimResults = false; 
+        
         recognition.lang = 'hi-IN';
 
         recognition.onresult = (event: any) => {
-          // 🔥 FIX 2: Echo Loop खत्म करने का मास्टरस्ट्रोक!
-          // हम पुराने शब्दों को 'Ref' में जोड़ने के बजाय, हर बार पूरी हिस्ट्री को 0 से लेकर end तक दोबारा पढ़ते हैं।
-          // चूँकि event.results में खुद-ब-खुद सेशन की पूरी हिस्ट्री होती है, इसलिए डुप्लीकेशन का सवाल ही पैदा नहीं होता!
-          let currentSessionTranscript = '';
+          let sessionTranscript = '';
+          
+          // इस सेशन के सारे पक्के (final) शब्दों को एक साथ जोड़ें
           for (let i = 0; i < event.results.length; ++i) {
-            currentSessionTranscript += event.results[i][0].transcript + ' ';
+            sessionTranscript += event.results[i][0].transcript + ' ';
           }
           
-          const fullText = (initialTextRef.current + ' ' + currentSessionTranscript).replace(/\s+/g, ' ').trim();
+          // माइक चालू करने से पहले का टेक्स्ट + अभी बोला गया नया टेक्स्ट
+          const fullText = (initialTextRef.current + ' ' + sessionTranscript).replace(/\s+/g, ' ').trim();
           setValue(fullText);
+          currentValueRef.current = fullText;
         };
 
         recognition.onerror = (e: any) => {
@@ -96,8 +101,7 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
 
         recognition.onend = () => {
           setIsListening(false);
-          // 🔥 FIX 3: Stale Closure बग फिक्स! 
-          // माइक बंद होने पर जो भी लेटेस्ट टेक्स्ट टाइप हुआ है, उसे अगली बार के लिए सेव कर लो।
+          // माइक बंद होने पर जो भी लेटेस्ट टेक्स्ट है, उसे सेव कर लें
           initialTextRef.current = currentValueRef.current.trim() ? currentValueRef.current.trim() + ' ' : '';
         };
 
@@ -234,7 +238,7 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
             }
           }}
           onKeyDown={handleKeyDown}
-          // 🔥 FIX 4: जब माइक चल रहा हो तो टाइपिंग ब्लॉक कर दें ताकि कॉन्फ्लिक्ट न हो
+          // जब माइक चल रहा हो तो टाइपिंग ब्लॉक कर दें ताकि कॉन्फ्लिक्ट न हो
           readOnly={isListening}
           placeholder={isListening ? "Listening to your voice..." : "Type your point here..."}
           rows={2}
