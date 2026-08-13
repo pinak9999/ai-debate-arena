@@ -195,7 +195,6 @@ function buildRLInstruction(
   return `[CRITICAL STRATEGY SHIFT — LIVE AUDIENCE FEEDBACK]: The vote is closely contested (Current score: ${myScore}%). Maintain composure, deliver a balanced, undeniable argument to break the tie.`;
 }
 
-// ─── SCORE CLAMP HELPER ───
 function clampScore(n: unknown, fallback: number, min = 10, max = 100): number {
   const num = typeof n === 'number' && Number.isFinite(n) ? n : fallback;
   return Math.max(min, Math.min(max, Math.round(num)));
@@ -207,9 +206,6 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
 
-    // ─────────────────────────────────────────────────────────────────
-    // 0. STOCK DATA
-    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'stock_data') {
       const { symbol } = body;
       if (!symbol) return NextResponse.json({ error: 'Missing symbol' }, { status: 400 });
@@ -269,9 +265,6 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // 1. DEBATE TURN
-    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'debate_turn') {
       const { topic, round, totalRounds, speaker, history = [], mode = 'topic', stockContext, audienceScore, language = 'Hindi' } = body;
       if (!topic || !speaker || !round) return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
@@ -405,9 +398,6 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       return toManualTextStream(cleanOutput);
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // 2. JUDGE CRITIQUE
-    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'judge_critique') {
       const { history = [], mode = 'topic', language = 'Hindi' } = body;
       const biasNote = mode === 'personality'
@@ -422,10 +412,6 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       return NextResponse.json({ critique: stripFakeCitations(text) });
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // 3. JUDGE VERDICT
-    // 🔥 FIX 1: अब जज लाइव वोट्स (audienceScore) को कंसीडर करेगा!
-    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'judge_verdict') {
       const { topic, history = [], mode = 'topic', language = 'Hindi', audienceScore } = body;
       const biasNote = mode === 'personality'
@@ -530,10 +516,7 @@ Respond STRICTLY with JSON ONLY, no extra text:
       });
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // 4. ROUND SCORE
-    // 🔥 FIX 2: ग्राफ में पेनल्टी को हाथों-हाथ (Instantly) घटाया जाएगा!
-    // ─────────────────────────────────────────────────────────────────
+    // 🔥 FIX 2: HARD MATH OVERRIDE FOR GRAPH SCORING
     if (body.type === 'round_score') {
       const { topic, history = [], round, language = 'Hindi' } = body;
 
@@ -541,12 +524,13 @@ Respond STRICTLY with JSON ONLY, no extra text:
       
       let proRoundPenalty = 0;
       let oppRoundPenalty = 0;
+
       roundMessages.forEach((msg: { speaker: string; text: string }) => {
         const match = msg.text.match(/\[SYSTEM NOTE: PENALTY APPLIED.*?(-\d+)/i);
         if (match && match[1]) {
           const deduction = Math.abs(parseInt(match[1], 10));
-          if (msg.speaker === 'proponent') proRoundPenalty += deduction;
-          if (msg.speaker === 'opponent') oppRoundPenalty += deduction;
+          if (msg.speaker === 'proponent') { proRoundPenalty += deduction; }
+          if (msg.speaker === 'opponent') { oppRoundPenalty += deduction; }
         }
       });
 
@@ -561,28 +545,33 @@ ${transcriptForRound || '(No statements found for this round)'}
 
 Score each debater's performance in THIS ROUND ONLY, between 60 and 95. 
 CRITICAL RULES:
-1. Base it strictly on logical coherence and strength of rebuttal. 
-2. Reward calm, data-driven reasoning.
+1. Base it strictly on logical coherence and concrete data.
+2. If a debater has a [SYSTEM NOTE: PENALTY APPLIED] in their text, you MUST score them poorly.
+3. Do not reward aggressive but baseless rhetoric.
 
 Respond STRICTLY with JSON ONLY: {"pro": <number>, "opp": <number>}`;
 
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
-        temperature: 0.5,
+        temperature: 0.2, // Temperature low कर दी है ताकि AI ज़्यादा सटीक नंबर दे
         prompt
       });
+      
       const parsed = safeJsonParse(text, { pro: 75, opp: 75 });
       
+      let finalPro = parsed.pro;
+      let finalOpp = parsed.opp;
+
+      // 🔴 THE MAGIC FIX: अगर पेनाल्टी लगी है, तो AI के दिए नंबर को फाड़कर सीधा 65 पर गिरा दो!
+      if (proRoundPenalty > 0) finalPro = Math.min(finalPro, 65) - proRoundPenalty;
+      if (oppRoundPenalty > 0) finalOpp = Math.min(finalOpp, 65) - oppRoundPenalty;
+
       return NextResponse.json({
-        // पेनल्टी को LLM के स्कोर से तुरंत घटाकर ग्राफ में भेज रहे हैं
-        pro: clampScore(parsed.pro - proRoundPenalty, 75, 30, 100),
-        opp: clampScore(parsed.opp - oppRoundPenalty, 75, 30, 100),
+        pro: clampScore(finalPro, 75, 30, 100),
+        opp: clampScore(finalOpp, 75, 30, 100),
       });
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // 5. FALLACY & TONE CHECK
-    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text, topic, language = 'Hindi' } = body;
       const prompt = `You are an expert, UNBIASED Debate Moderator. Analyze this statement (written in ${language}) for GENUINE logical fallacies ONLY.
@@ -630,9 +619,6 @@ Respond STRICTLY with JSON ONLY:
       return NextResponse.json(finalParsed);
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // 6. FACT CHECK
-    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fact_check') {
       const { claim, language = 'Hindi' } = body;
       try {
