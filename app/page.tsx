@@ -7,7 +7,7 @@ import HeroSection from '@/components/HeroSection';
 import DebateArena from '@/components/DebateArena';
 import JudgeVerdict from '@/components/JudgeVerdict';
 import ParticleBackground from '@/components/ParticleBackground';
-import { useDebate, DebateLanguage } from '@/hooks/useDebate'; // DebateLanguage टाइप इम्पोर्ट किया
+import { useDebate, DebateLanguage } from '@/hooks/useDebate'; 
 import { ModeToggle } from '@/components/ModeToggle';
 
 export default function Home() {
@@ -73,7 +73,7 @@ export default function Home() {
                 />
               </div>
 
-              {/* 🔥 नया लैंग्वेज सेलेक्टर */}
+              {/* 🔥 अपडेटेड लैंग्वेज सेलेक्टर (All Supported Languages) */}
               <div className="flex flex-col items-center">
                  <p className="text-gray-400 text-xs mb-3 uppercase tracking-widest font-bold">Select Language</p>
                  <select 
@@ -81,11 +81,24 @@ export default function Home() {
                   onChange={(e) => setSelectedLang(e.target.value as DebateLanguage)}
                   className="bg-black/40 border border-white/10 text-white text-xs uppercase tracking-widest px-6 py-2 rounded-full cursor-pointer hover:border-blue-500/50 transition-all outline-none"
                 >
-                  <option value="Hindi">Hindi (हिंदी)</option>
                   <option value="English">English</option>
-                  <option value="Gujarati">Gujarati (ગુજરાતી)</option>
+                  <option value="Hindi">Hindi (हिंदी)</option>
                   <option value="Marathi">Marathi (मराठी)</option>
+                  <option value="Gujarati">Gujarati (ગુજરાતી)</option>
                   <option value="Punjabi">Punjabi (ਪੰਜਾਬੀ)</option>
+                  <option value="Bengali">Bengali (বাংলা)</option>
+                  <option value="Tamil">Tamil (தமிழ்)</option>
+                  <option value="Telugu">Telugu (తెలుగు)</option>
+                  <option value="Kannada">Kannada (ಕನ್ನಡ)</option>
+                  <option value="Malayalam">Malayalam (മലയാളം)</option>
+                  <option value="French">French (Français)</option>
+                  <option value="Spanish">Spanish (Español)</option>
+                  <option value="German">German (Deutsch)</option>
+                  <option value="Japanese">Japanese (日本語)</option>
+                  <option value="Korean">Korean (한국어)</option>
+                  <option value="Arabic">Arabic (العربية)</option>
+                  <option value="Russian">Russian (Русский)</option>
+                  <option value="Chinese">Chinese (中文)</option>
                 </select>
               </div>
             </div>
