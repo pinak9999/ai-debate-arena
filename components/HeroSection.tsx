@@ -2,13 +2,13 @@
 
 import { useState, useRef, type KeyboardEvent } from 'react';
 import { motion, type Variants } from 'framer-motion';
-// 🔥 यहाँ Youtube की जगह PlaySquare लगा दिया है
-import { Zap, Brain, TrendingUp, Target, Flame, Sparkles, PlaySquare } from 'lucide-react';
+// 🔥 यहाँ FileCode को ऐड किया है डॉक्यूमेंट अपलोड UI के लिए
+import { Zap, Brain, TrendingUp, Target, Flame, Sparkles, PlaySquare, FileCode } from 'lucide-react';
 import { ModeToggle } from '@/components/ModeToggle';
 import { DebateLanguage } from '@/hooks/useDebate';
 
 interface HeroSectionProps {
-  onStart: (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality' | 'youtube') => void;
+  onStart: (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality' | 'youtube' | 'document', documentText?: string) => void;
   mode: 'spectator' | 'player';
   setMode: (mode: 'spectator' | 'player') => void;
   selectedLang: DebateLanguage;
@@ -35,7 +35,7 @@ const EXAMPLES = {
 
 const TICKER_ITEMS = [
   'Round-based scoring', 'Live AI judge', 'Elo-style ratings', 
-  'NSE stock debates', 'YouTube Clash Mode', 'Real-time streaming'
+  'NSE stock debates', 'YouTube Clash Mode', 'Enterprise Code Audit', 'Real-time streaming'
 ];
 
 const containerVariants: Variants = {
@@ -49,19 +49,60 @@ const itemVariants: Variants = {
 };
 
 export default function HeroSection({ onStart, mode, setMode, selectedLang, setSelectedLang, disabled }: HeroSectionProps) {
-  const [subject, setSubject] = useState<'topic' | 'stock' | 'personality' | 'youtube'>('topic');
+  const [subject, setSubject] = useState<'topic' | 'stock' | 'personality' | 'youtube' | 'document'>('topic');
   const [topic, setTopic] = useState('');
   const [rounds, setRounds] = useState(3);
   const [launching, setLaunching] = useState(false);
+  
+  // 🔥 Document Mode के लिए नए States
+  const [documentText, setDocumentText] = useState('');
+  const [fileName, setFileName] = useState('');
+  const [uploadError, setUploadError] = useState('');
+
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const isStock = subject === 'stock';
   const isPersonality = subject === 'personality';
   const isYoutube = subject === 'youtube';
-  const examples = EXAMPLES[subject];
+  const isDocument = subject === 'document';
+  
+  const examples = !isDocument ? EXAMPLES[subject as keyof typeof EXAMPLES] : [];
+
+  // 🔥 फाइल अपलोड हैंडल करने का लॉजिक
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setFileName(file.name);
+    setUploadError('');
+
+    // अभी सिर्फ कोड/टेक्स्ट फाइल्स एलाऊ कर रहे हैं
+    const validExtensions = ['js', 'ts', 'jsx', 'tsx', 'py', 'txt', 'json', 'html', 'css', 'md'];
+    const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
+
+    if (!validExtensions.includes(fileExtension)) {
+      setUploadError('Only Code or Text files (.js, .py, .txt, etc) are supported right now.');
+      setDocumentText('');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      if (typeof evt.target?.result === 'string') {
+        setDocumentText(evt.target.result);
+        setTopic(file.name); // फाइल के नाम को ही टॉपिक बना देंगे
+      }
+    };
+    reader.onerror = () => setUploadError('Error reading the file.');
+    reader.readAsText(file);
+  };
 
   const handleStart = async () => {
-    if (!topic.trim() || launching) return;
+    if (launching) return;
+    
+    if (!isDocument && !topic.trim()) return;
+    if (isDocument && !documentText.trim()) return;
+
     setLaunching(true);
 
     if (isYoutube) {
@@ -86,6 +127,9 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
         alert('Failed to fetch video transcript. Make sure the link is valid.');
         setLaunching(false);
       }
+    } else if (isDocument) {
+      // 🔥 Document Mode स्टार्ट करने का लॉजिक
+      setTimeout(() => onStart(topic || 'Uploaded Document', rounds, 'document', documentText), 400);
     } else {
       setTimeout(() => onStart(topic.trim(), rounds, subject), 400);
     }
@@ -95,7 +139,9 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
     if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) handleStart();
   };
 
-  const canStart = topic.trim().length > 0 && !launching;
+  const canStart = isDocument 
+    ? documentText.trim().length > 0 && !launching && !uploadError
+    : topic.trim().length > 0 && !launching;
 
   const themeColors = isStock 
     ? { glow: 'from-emerald-400 to-teal-600', border: 'border-emerald-500/50', bg: 'bg-emerald-500', text: 'text-emerald-400', shadow: 'shadow-[0_0_15px_rgba(52,211,153,0.25)]' }
@@ -103,6 +149,8 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
     ? { glow: 'from-amber-400 to-orange-600', border: 'border-amber-500/50', bg: 'bg-amber-500', text: 'text-amber-400', shadow: 'shadow-[0_0_15px_rgba(245,158,11,0.25)]' }
     : isYoutube
     ? { glow: 'from-red-500 to-rose-600', border: 'border-red-500/50', bg: 'bg-red-600', text: 'text-red-400', shadow: 'shadow-[0_0_15px_rgba(239,68,68,0.25)]' }
+    : isDocument
+    ? { glow: 'from-purple-500 to-indigo-600', border: 'border-purple-500/50', bg: 'bg-purple-600', text: 'text-purple-400', shadow: 'shadow-[0_0_15px_rgba(147,51,234,0.25)]' }
     : { glow: 'from-cyan-400 to-blue-600', border: 'border-cyan-500/50', bg: 'bg-blue-600', text: 'text-cyan-400', shadow: 'shadow-[0_0_15px_rgba(0,212,255,0.25)]' };
 
   return (
@@ -161,7 +209,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
       </header>
 
       {/* ── Main Content ── */}
-      <main className="flex-1 min-h-0 flex flex-col items-center justify-center px-4 z-10 w-full max-w-3xl mx-auto py-2">
+      <main className="flex-1 min-h-0 flex flex-col items-center justify-center px-4 z-10 w-full max-w-4xl mx-auto py-2">
         
         <motion.div variants={itemVariants} className="text-center mb-[2vh] shrink-0">
           <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-[9px] font-bold tracking-widest uppercase border border-blue-500/20 mb-2">
@@ -204,7 +252,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
                   isPersonality ? 'bg-amber-500 text-white shadow-md' : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
-                <Flame className="w-3 h-3" /> Personality
+                <Flame className="w-3 h-3" /> Clash
               </button>
               <button
                 onClick={() => { setSubject('youtube'); setTopic(''); }}
@@ -212,39 +260,76 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
                   isYoutube ? 'bg-red-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-300'
                 }`}
               >
-                {/* 🔥 यहाँ PlaySquare का इस्तेमाल किया है */}
-                <PlaySquare className="w-3 h-3" /> YouTube Clash
+                <PlaySquare className="w-3 h-3" /> YouTube
+              </button>
+              {/* 🔥 नया Document Audit टैब */}
+              <button
+                onClick={() => { setSubject('document'); setTopic(''); setDocumentText(''); setFileName(''); }}
+                className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 sm:py-2 px-2 rounded-lg text-[9px] sm:text-[10px] font-bold tracking-widest uppercase transition-all whitespace-nowrap ${
+                  isDocument ? 'bg-purple-600 text-white shadow-md' : 'text-gray-500 hover:text-gray-300'
+                }`}
+              >
+                <FileCode className="w-3 h-3" /> Audit
               </button>
             </div>
 
-            {/* Input */}
+            {/* Input Area (Textarea OR File Uploader) */}
             <div className="relative group shrink-0">
               <div className={`absolute -inset-0.5 bg-gradient-to-r ${themeColors.glow} rounded-xl blur opacity-20 transition duration-500`} />
-              <textarea
-                ref={textareaRef}
-                value={topic}
-                onChange={(e) => setTopic(isStock ? e.target.value.toUpperCase() : e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={isYoutube ? 'Paste a YouTube video link here...' : isStock ? 'e.g. SUZLON.NS' : isPersonality ? 'Enter a philosophical topic...' : 'Enter a debate topic...'}
-                rows={1}
-                className={`relative w-full bg-[#0a0f1a] border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 text-[12px] sm:text-[13px] outline-none resize-none transition-all duration-300 focus:${themeColors.border} overflow-hidden`}
-              />
+              
+              {isDocument ? (
+                // 🔥 File Uploader UI
+                <div className="relative w-full h-[80px] bg-[#0a0f1a] border border-dashed border-white/20 hover:border-purple-500/50 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer overflow-hidden">
+                  <input 
+                    type="file" 
+                    accept=".js,.ts,.jsx,.tsx,.py,.txt,.json,.md,.css,.html" 
+                    onChange={handleFileUpload} 
+                    className="absolute inset-0 opacity-0 cursor-pointer z-10" 
+                  />
+                  <div className="flex items-center gap-3 z-0">
+                    <FileCode className={`w-6 h-6 ${fileName ? 'text-purple-400' : 'text-gray-500'}`} />
+                    <div className="flex flex-col text-left">
+                      <span className={`text-[12px] font-bold tracking-wider ${fileName ? 'text-white' : 'text-gray-400 uppercase'}`}>
+                        {fileName ? fileName : 'Upload Code / Text File'}
+                      </span>
+                      {uploadError ? (
+                        <span className="text-[9px] text-red-400 mt-0.5">{uploadError}</span>
+                      ) : (
+                        <span className="text-[9px] text-gray-500">Supports .js, .py, .txt, .json etc</span>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                // Normal Textarea
+                <textarea
+                  ref={textareaRef}
+                  value={topic}
+                  onChange={(e) => setTopic(isStock ? e.target.value.toUpperCase() : e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder={isYoutube ? 'Paste a YouTube video link here...' : isStock ? 'e.g. SUZLON.NS' : isPersonality ? 'Enter a philosophical topic...' : 'Enter a debate topic...'}
+                  rows={1}
+                  className={`relative w-full bg-[#0a0f1a] border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 text-[12px] sm:text-[13px] outline-none resize-none transition-all duration-300 focus:${themeColors.border} overflow-hidden`}
+                />
+              )}
             </div>
 
-            {/* Quick Examples */}
-            <div className="overflow-x-auto whitespace-nowrap pb-1 scrollbar-hide shrink-0">
-              <div className="flex gap-2">
-                {examples.map((t) => (
-                  <button
-                    key={t}
-                    onClick={() => { if(!isYoutube) setTopic(t); }}
-                    className="inline-block text-[9px] sm:text-[10px] px-3 py-1.5 rounded-md border border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white transition-all cursor-pointer font-medium"
-                  >
-                    {t}
-                  </button>
-                ))}
+            {/* Quick Examples (डॉक्यूमेंट मोड में ये नहीं दिखेंगे) */}
+            {!isDocument && (
+              <div className="overflow-x-auto whitespace-nowrap pb-1 scrollbar-hide shrink-0">
+                <div className="flex gap-2">
+                  {examples.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => { if(!isYoutube) setTopic(t); }}
+                      className="inline-block text-[9px] sm:text-[10px] px-3 py-1.5 rounded-md border border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white transition-all cursor-pointer font-medium"
+                    >
+                      {t}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
 
             {/* Footer */}
             <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/10 shrink-0">
@@ -275,13 +360,12 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
               >
                 {launching ? (
                   <span className="flex items-center gap-2 animate-pulse">
-                    <Sparkles className="w-3.5 h-3.5" /> {isYoutube ? 'Analyzing Video...' : 'Launching...'}
+                    <Sparkles className="w-3.5 h-3.5" /> {isYoutube ? 'Analyzing Video...' : isDocument ? 'Reading Code...' : 'Launching...'}
                   </span>
                 ) : (
                   <span className="flex items-center gap-2">
-                    {/* 🔥 यहाँ भी PlaySquare का इस्तेमाल किया है */}
-                    {isYoutube ? <PlaySquare className="w-3.5 h-3.5 fill-current" /> : <Zap className="w-3.5 h-3.5 fill-current" />}
-                    {isYoutube ? 'Start Creator Clash' : isStock ? 'War-Room' : 'Start'}
+                    {isYoutube ? <PlaySquare className="w-3.5 h-3.5 fill-current" /> : isDocument ? <FileCode className="w-3.5 h-3.5" /> : <Zap className="w-3.5 h-3.5 fill-current" />}
+                    {isYoutube ? 'Start Creator Clash' : isStock ? 'War-Room' : isDocument ? 'Audit Code' : 'Start'}
                   </span>
                 )}
               </motion.button>

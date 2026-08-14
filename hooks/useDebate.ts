@@ -45,8 +45,8 @@ export interface JudgeScores {
 export type DebateStatus = 'idle' | 'debating' | 'judging' | 'finished' | 'error';
 export type DebateMode = 'spectator' | 'player';
 
-// 🔥 यहाँ 'youtube' को सुरक्षित तरीके से जोड़ दिया गया है
-export type DebateSubject = 'topic' | 'stock' | 'personality' | 'youtube';
+// 🔥 यहाँ 'document' को सुरक्षित तरीके से जोड़ दिया गया है
+export type DebateSubject = 'topic' | 'stock' | 'personality' | 'youtube' | 'document';
 
 export type DebateLanguage =
   | 'Hindi'
@@ -102,6 +102,7 @@ export interface DebateConfig {
   totalRounds: number;
   subject?: DebateSubject;
   language?: DebateLanguage | string;
+  documentText?: string; // 🔥 नया पैरामीटर जो फाइल का टेक्स्ट स्टोर करेगा
 }
 
 export interface AgentLog {
@@ -227,6 +228,8 @@ export function useDebate(): UseDebateReturn {
   useEffect(() => {
     topicRef.current = topic;
   }, [topic]);
+
+  const documentTextRef = useRef<string | undefined>(undefined); // 🔥 डॉक्यूमेंट टेक्स्ट को सुरक्षित रखने के लिए
 
   const [scoreHistory, setScoreHistory] = useState<ScorePoint[]>([]);
   const [mode, setMode] = useState<DebateMode>('spectator');
@@ -356,6 +359,7 @@ export function useDebate(): UseDebateReturn {
     setScores(null);
     setTopic('');
     topicRef.current = '';
+    documentTextRef.current = undefined; // 🔥
     setError(null);
     setScoreHistory([]);
     setWaitingForPlayer(false);
@@ -432,6 +436,7 @@ export function useDebate(): UseDebateReturn {
         stockContext?: StockData | null;
         audienceScore?: AudienceScore;
         language?: DebateLanguage | string;
+        documentText?: string; // 🔥 नया पैरामीटर
       },
       signal: AbortSignal
     ): Promise<string> => {
@@ -452,6 +457,7 @@ export function useDebate(): UseDebateReturn {
           stockContext: params.stockContext || undefined,
           audienceScore: params.audienceScore,
           language: params.language,
+          documentText: params.documentText, // 🔥 यहाँ API को भेज रहे हैं
         }),
         signal,
       });
@@ -672,6 +678,7 @@ export function useDebate(): UseDebateReturn {
 
       setTopic(config.topic);
       topicRef.current = config.topic;
+      documentTextRef.current = config.documentText; // 🔥 
       
       setTotalRounds(config.totalRounds);
       setStatus('debating');
@@ -694,7 +701,6 @@ export function useDebate(): UseDebateReturn {
 
       let fetchedStockData: StockData | null = null;
       
-      // 🔥 यहाँ YouTube मोड के लिए नया सिस्टम लॉग जोड़ा गया है
       if (subjectMode === 'stock') {
         setStockLoading(true);
         addLog(`[Market Data] Fetching live intraday feed for ${config.topic}...`, 'system');
@@ -713,6 +719,9 @@ export function useDebate(): UseDebateReturn {
         addLog(`[System] Personality Clash Mode activated — Aggressive Analyst vs The Philosopher, grounded via live web research.`, 'system');
       } else if (subjectMode === 'youtube') {
         addLog(`[System] YouTube Creator Clash activated — AI agents will debate the video's core claims.`, 'system');
+      } else if (subjectMode === 'document') {
+        // 🔥 Document Mode Log
+        addLog(`[System] Enterprise Code Audit activated — AI agents will review the uploaded document/code.`, 'system');
       }
 
       supabase.removeAllChannels();
@@ -791,6 +800,7 @@ export function useDebate(): UseDebateReturn {
                   stockContext: fetchedStockData,
                   audienceScore: audienceScoreRef.current,
                   language: languageRef.current,
+                  documentText: documentTextRef.current, // 🔥
                 },
                 signal
               );
