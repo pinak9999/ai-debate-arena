@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { YoutubeTranscript } from 'youtube-transcript';
 import { generateText } from 'ai';
 import { createGroq } from '@ai-sdk/groq';
 
-export const maxDuration = 10;
+export const maxDuration = 60;
 
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY,
@@ -29,18 +28,46 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Invalid YouTube URL' }, { status: 400 });
     }
 
-    // 1. वीडियो का ट्रांसक्रिप्ट (Subtitles) निकालो
-    let transcriptItems;
+    // 1. 🔥 NAYA RAPID-API LOGIC (Bypasses YouTube Bot Protection) 🔥
+    let fullText = "";
     try {
-      transcriptItems = await YoutubeTranscript.fetchTranscript(videoId);
+      // API URL with flat_text=true
+      const rapidApiUrl = `https://youtube-transcript3.p.rapidapi.com/api/transcript-with-url?url=${encodeURIComponent(url)}&flat_text=true&lang=en`;
+      
+      const response = await fetch(rapidApiUrl, {
+        method: 'GET',
+        headers: {
+          // मैंने तुम्हारी Key यहाँ डाल दी है ताकि तुरंत काम करे (बाद में इसे .env में भी रख सकते हो)
+          'x-rapidapi-key': process.env.RAPIDAPI_KEY || '2cd9076bebmshca16f5e8a867e13p1793c8jsn81bfb6374ed0',
+          'x-rapidapi-host': 'youtube-transcript3.p.rapidapi.com'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error(`RapidAPI Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // API का रिस्पांस हैंडल करना (क्यूंकि flat_text=true है)
+      if (data && typeof data === 'string') {
+         fullText = data;
+      } else if (data && data.transcript && typeof data.transcript === 'string') {
+         fullText = data.transcript;
+      } else if (data && data.transcript && Array.isArray(data.transcript)) {
+         fullText = data.transcript.map((item: any) => item.text || '').join(' ');
+      } else if (Array.isArray(data)) {
+         fullText = data.map((item: any) => item.text || '').join(' ');
+      } else {
+         fullText = JSON.stringify(data);
+      }
+
     } catch (error) {
-      return NextResponse.json({ error: 'Could not fetch transcript. Make sure the video has captions enabled.' }, { status: 400 });
+      console.error("RapidAPI Transcript Error:", error);
+      return NextResponse.json({ error: 'Could not fetch transcript from RapidAPI. Make sure the video has captions enabled.' }, { status: 400 });
     }
 
-    // ट्रांसक्रिप्ट को एक सिंगल टेक्स्ट में जोड़ो
-    const fullText = transcriptItems.map(item => item.text).join(' ');
-    
-    // LLM के लिए टेक्स्ट को लिमिट करो (ताकि 10 सेकंड की लिमिट क्रॉस न हो)
+    // LLM के लिए टेक्स्ट को लिमिट करो
     const limitedText = fullText.slice(0, 15000); 
 
     // 2. Groq AI से वीडियो की समरी और मेन दावे (Claims) निकलवाओ
@@ -82,7 +109,7 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
     });
 
   } catch (error) {
-    console.error("YouTube API Error:", error);
+    console.error("Global YouTube API Error:", error);
     return NextResponse.json({ error: 'An error occurred while processing the video.' }, { status: 500 });
   }
 }
