@@ -12,9 +12,7 @@ const groq = createGroq({
 
 function safeJsonParse<T>(raw: string, fallback: T): T {
   try {
-    // LLM कभी-कभी markdown लगा देता है, उसे साफ़ करना ज़रूरी है
     let clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
-    // कभी-कभी LLM शुरुआत में text लिख देता है, तो हम सिर्फ {} वाला हिस्सा निकालेंगे
     const startIndex = clean.indexOf('{');
     const endIndex = clean.lastIndexOf('}');
     if (startIndex !== -1 && endIndex !== -1) {
@@ -55,7 +53,6 @@ function toManualTextStream(text: string): Response {
   });
 }
 
-// 🔥 FIX 1: Smarter Search Query Generation
 async function generateSearchQuery(text: string): Promise<string> {
   try {
     const { text: query } = await generateText({
@@ -126,7 +123,7 @@ async function searchTavily(query: string): Promise<{ answer: string | null; sou
   try {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 4000);
-    const res = await fetch('[https://api.tavily.com/search](https://api.tavily.com/search)', {
+    const res = await fetch('https://api.tavily.com/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -221,7 +218,7 @@ export async function POST(req: NextRequest) {
 
       try {
         const res = await fetch(
-          `[https://query1.finance.yahoo.com/v8/finance/chart/$](https://query1.finance.yahoo.com/v8/finance/chart/$){encodeURIComponent(symbol)}?interval=5m&range=1d`,
+          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?interval=5m&range=1d`,
           { headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' } }
         );
         const json = await res.json();
@@ -281,6 +278,7 @@ export async function POST(req: NextRequest) {
       const isStockMode = mode === 'stock';
       const isPersonalityMode = mode === 'personality';
       const isYoutubeMode = mode === 'youtube'; 
+      const isDocumentMode = mode === 'document'; // 🔥 NEW DOCUMENT MODE
       const position = speaker === 'proponent' ? 'SUPPORTING' : 'OPPOSING';
 
       const messages = history.map((msg: { speaker: string; text: string }) => ({
@@ -289,7 +287,13 @@ export async function POST(req: NextRequest) {
       }));
 
       let groundingBlock = '';
-      if (isStockMode) {
+      if (isDocumentMode) {
+        // 🔥 DOCUMENT MODE GROUNDING LOGIC
+        const documentText = body.documentText || '';
+        groundingBlock = documentText 
+          ? `UPLOADED DOCUMENT / CODE CONTEXT:\n"""\n${documentText.slice(0, 10000)}\n"""\nCRITICAL: Use exact line numbers, variable names, or specific quotes from this document in your argument.`
+          : `No document provided. Argue based on general software engineering or business principles.`;
+      } else if (isStockMode) {
         groundingBlock = stockContext
           ? `LIVE MARKET DATA for ${stockContext.symbol} (${stockContext.companyName || ''}):
 - Current Price: ₹${stockContext.currentPrice}
@@ -322,7 +326,22 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
       const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY. Do not use Roman/English letters. Every single word must be authentically written in the native ${language} alphabet.`;
 
       let roundInstruction = '';
-      if (isYoutubeMode) {
+      if (isDocumentMode) {
+        // 🔥 DOCUMENT MODE ROUND LOGIC
+        if (round === 1) {
+          roundInstruction = speaker === 'proponent'
+            ? "OPENING DEFENSE: You are the Lead Author/Developer. Proudly present the core logic of this document. Explain why it is highly optimized, secure, and well-structured. (60-80 words)."
+            : "OPENING AUDIT: You are a ruthless Senior Code Reviewer/Auditor. Immediately point out the biggest vulnerability, bug, or logical flaw in the document. (60-80 words).";
+        } else if (round === totalRounds) {
+          roundInstruction = speaker === 'proponent'
+            ? "FINAL VERDICT: Conclude why the code/document is production-ready and the opponent's fears are baseless. (Max 50 words)."
+            : "FINAL REJECTION: Conclude why this document is a disaster and must be rewritten or rejected. (Max 50 words).";
+        } else {
+          roundInstruction = speaker === 'proponent'
+            ? "COUNTER-ATTACK: Defend your code/logic against the opponent's audit. Explain why their highlighted flaw is actually intentional or handled elsewhere. (60-80 words)."
+            : "DIRECT CLASH: Rip apart the proponent's defense. Find a new edge-case, memory leak, or security loophole (like SQL injection or O(n^2) complexity) in the text. (60-80 words).";
+        }
+      } else if (isYoutubeMode) {
         if (round === 1) {
           roundInstruction = speaker === 'proponent'
             ? "OPENING DEFENSE: You are a loyal fan of this creator. Strongly agree with the video's main claims and defend them fiercely. MUST include a specific data point from the context. (60-80 words)."
@@ -337,7 +356,6 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
             : "DIRECT CLASH: Dismantle the defender's logic. Point out exactly why the creator's argument falls apart in the real world using concrete numbers. (60-80 words).";
         }
       } else if (isStockMode) {
-        // ... (stock mode logic unchanged)
         if (round === 1) {
           roundInstruction = 'OPENING PITCH: State your core investment thesis clearly. Act like an elite Wall Street Hedge Fund Manager. Justify your bullish/bearish stance using the live data. (60-80 words).';
         } else if (round === totalRounds) {
@@ -346,7 +364,6 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
           roundInstruction = "DIRECT CLASH: Aggressively attack the specific fundamental or technical flaw in the opponent's last point. Then reinforce your own trade thesis with a new metric or market angle. (60-80 words).";
         }
       } else if (isPersonalityMode) {
-        // ... (personality mode logic unchanged)
         if (round === 1) {
           roundInstruction = speaker === 'proponent'
             ? 'OPENING BLITZ: Open with hard data, statistics, or a current news fact. Be direct, punchy, assertive. (60-80 words).'
@@ -375,8 +392,11 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
       let opponentExtraInstruction = '';
       let proponentExtraInstruction = '';
 
-      if (isYoutubeMode) {
-        // 🔥 FIX 4: Smarter Opponent Logic (No self-goals)
+      if (isDocumentMode) {
+        // 🔥 DOCUMENT MODE EXTRA INSTRUCTIONS
+        opponentExtraInstruction = `Identify ONE major technical flaw, security risk, or bad practice in the provided document. Be extremely technical.`;
+        proponentExtraInstruction = `Defend the architecture. Use technical jargon to explain why the code/document is efficient.`;
+      } else if (isYoutubeMode) {
         opponentExtraInstruction = `Identify ONE major logical flaw, bias, or missing real-world fact from the YouTuber's claims. CRUCIAL: Make sure your counter-argument actually REFUTES the video. Do not accidentally use data that supports the creator's point. Your goal is to prove the video is WRONG.`;
         proponentExtraInstruction = `CRITICAL RULE: You MUST extract and state at least ONE specific statistic, number, or concrete fact from the provided video context. Do NOT say "I will use data" without actually providing the exact numbers.`;
       } else if (isStockMode) {
@@ -387,7 +407,19 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
         opponentExtraInstruction = `Identify the ONE main factual counter-point or logical flaw in the proponent's latest argument (without naming it academically), and weave it naturally into your argument.`;
       }
 
-      const systemPrompt = isYoutubeMode
+      const systemPrompt = isDocumentMode
+        ? `
+You are debating a technical document or code snippet. Topic: "${topic}".
+Role: ${speaker === 'proponent' ? 'THE LEAD AUTHOR/DEVELOPER' : 'THE RUTHLESS SENIOR AUDITOR'}.
+${groundingBlock}
+${speaker === 'opponent' ? opponentExtraInstruction : proponentExtraInstruction}
+${antiRepetitionRule}
+${rlInstruction}
+${roundInstruction}
+${langInstruction}
+Tone: Highly technical, professional, yet fiercely competitive. Use specific jargon related to software engineering or formal document review.
+        `.trim()
+        : isYoutubeMode
         ? `
 You are debating a popular YouTube video's claims. Topic/Context: "${topic}".
 Role: ${speaker === 'proponent' ? 'THE LOYAL SUPPORTER' : 'THE RUTHLESS CRITIC'}.
@@ -452,6 +484,8 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         ? ' Judge purely on logical strength and evidence — do not favor either style.'
         : mode === 'youtube'
         ? ' Judge purely on logic and fact-checking strength. Do not show bias towards or against the creator.'
+        : mode === 'document'
+        ? ' Judge strictly on technical accuracy, code review principles, and logical flaw detection.' // 🔥 DOCUMENT MODE JUDGE
         : '';
       const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback, written STRICTLY in ${language.toUpperCase()} Native Script, under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
       const { text } = await generateText({
@@ -471,6 +505,8 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         ? '\nIMPORTANT: Remain STRICTLY NEUTRAL between the Aggressive Data-Driven debater and the Philosophical debater. Score only on logical strength, evidence, and direct engagement.'
         : mode === 'youtube'
         ? '\nIMPORTANT: You are evaluating a debate about a YouTube video. Score based on who had better facts and logical rebuttals, not on your own opinion of the creator.'
+        : mode === 'document'
+        ? '\nIMPORTANT: You are evaluating a technical code/document audit. Score based on technical depth, accurate identification of security/logic flaws, and robust defense of architecture.' // 🔥 DOCUMENT MODE JUDGE
         : '';
 
       let voteContext = '';
@@ -500,7 +536,6 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         if (msg.speaker === 'opponent') oppPenalty += deduction;
       });
 
-      // 🔥 FIX 2: Strict JSON enforcement for the Judge
       const judgePrompt = `You are a strict, expert debate judge. Evaluate the FULL debate on Topic: "${topic}"${biasNote}
 
 Transcript:
@@ -528,7 +563,7 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap the JSON in markdown blocks
 
       const { text } = await generateText({
         model: groq('llama-3.1-8b-instant'),
-        temperature: 0.1, // Lowered temperature for consistent JSON formatting
+        temperature: 0.1,
         prompt: judgePrompt
       });
 
@@ -656,7 +691,6 @@ Respond STRICTLY with JSON ONLY. Do NOT wrap in \`\`\`json: {"pro": <number>, "o
     // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text, topic, language = 'Hindi' } = body;
-      // 🔥 FIX 3: Lenient Fallacy Rules (No more crazy emotion penalties)
       const prompt = `You are an expert, UNBIASED Debate Moderator. Analyze this statement (written in ${language}) for GENUINE logical fallacies.
 Topic: "${topic}"
 Statement: "${text}"

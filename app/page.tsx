@@ -13,9 +13,14 @@ export default function Home() {
   const debate = useDebate();
   const [selectedLang, setSelectedLang] = useState<DebateLanguage>('Hindi');
 
-  // 🔥 यहाँ 'youtube' टाइप को ऐड कर दिया गया है
-  const handleStart = (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality' | 'youtube') => {
-    debate.startDebate({ topic: input, totalRounds: rounds, subject, language: selectedLang });
+  // 🔥 यहाँ 'document' टाइप और 'documentText' पैरामीटर को ऐड कर दिया गया है
+  const handleStart = (
+    input: string, 
+    rounds: number, 
+    subject: 'topic' | 'stock' | 'personality' | 'youtube' | 'document', 
+    documentText?: string
+  ) => {
+    debate.startDebate({ topic: input, totalRounds: rounds, subject, language: selectedLang, documentText });
   };
 
   const showHero    = debate.status === 'idle';
@@ -67,9 +72,13 @@ export default function Home() {
           >
             <div className="flex items-center justify-between px-4 pt-5 pb-1 max-w-7xl mx-auto relative z-20">
               <div>
-                {/* 🔥 यहाँ YouTube के लिए नया टाइटल डाल दिया है */}
+                {/* 🔥 यहाँ Document Audit के लिए नया डायनामिक टाइटल डाल दिया है */}
                 <h1 className="font-orbitron font-black text-base text-white tracking-[0.18em] uppercase">
-                  {debate.subject === 'stock' ? 'Financial War-Room' : debate.subject === 'personality' ? 'Personality Clash Arena' : debate.subject === 'youtube' ? 'YouTube Creator Clash' : 'AI Debate Arena'}
+                  {debate.subject === 'stock' ? 'Financial War-Room' : 
+                   debate.subject === 'personality' ? 'Personality Clash Arena' : 
+                   debate.subject === 'youtube' ? 'YouTube Creator Clash' : 
+                   debate.subject === 'document' ? 'Enterprise Code Audit' : 
+                   'AI Debate Arena'}
                 </h1>
                 <p className="text-white/25 text-[10px] tracking-[0.25em] uppercase">
                   {debate.status === 'judging' ? 'Evaluating…' : 'Live Session'} | Language: {debate.language}
