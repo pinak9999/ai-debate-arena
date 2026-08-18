@@ -770,8 +770,14 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap in \`\`\`json.
       }
     }
 
-    return NextResponse.json({ error: 'Unknown request type' }, { status: 400 });
-  } catch (error) {
-    return NextResponse.json({ error: 'An error occurred processing your request.' }, { status: 500 });
+   return NextResponse.json({ error: 'Unknown request type' }, { status: 400 });
+  } catch (error: any) {
+    // 🔥 यह लाइन Render के Logs में असली एरर छाप देगी!
+    console.error("FATAL API ERROR IN /api/debate:", error.message || error);
+    
+    return NextResponse.json({ 
+      error: 'An error occurred processing your request.',
+      details: error.message || String(error) 
+    }, { status: 500 });
   }
 }
