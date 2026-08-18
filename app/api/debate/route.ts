@@ -477,7 +477,7 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       const finalMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) without formal greetings and avoid robotic connector words.` }];
 
       const { text: rawOutput } = await generateText({
-        model: groq(''),
+        model: groq('llama3-8b-8192'),
         temperature: 0.7,
         system: systemPrompt,
         messages: finalMessages as any,
