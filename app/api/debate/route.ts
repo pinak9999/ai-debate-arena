@@ -4,8 +4,9 @@ import { createGroq } from '@ai-sdk/groq';
 
 export const maxDuration = 60;
 
+// 🔥 FIX: अगर API Key नहीं है, तो तुरंत क्रैश होने से बचाने के लिए || '' लगाया है
 const groq = createGroq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: process.env.GROQ_API_KEY || '', 
 });
 
 // ─── UTILITY FUNCTIONS ───
@@ -210,7 +211,18 @@ function clampScore(n: unknown, fallback: number, min = 10, max = 100): number {
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json();
+    // 🔥 FIX 1: API Keys की जांच पहले ही कर लो
+    if (!process.env.GROQ_API_KEY) {
+      return NextResponse.json({ error: 'ASLI ERROR: GROQ_API_KEY Environment Variable is missing!' }, { status: 500 });
+    }
+
+    // 🔥 FIX 2: req.json() को क्रैश होने से बचाया है
+    let body;
+    try {
+      body = await req.json();
+    } catch (err) {
+      return NextResponse.json({ error: 'ASLI ERROR: Invalid or empty JSON body received from frontend.' }, { status: 400 });
+    }
 
     if (body.type === 'stock_data') {
       const { symbol } = body;
@@ -288,7 +300,6 @@ export async function POST(req: NextRequest) {
 
       let groundingBlock = '';
       if (isDocumentMode) {
-        // 🔥 DOCUMENT MODE GROUNDING LOGIC
         const documentText = body.documentText || '';
         groundingBlock = documentText 
           ? `UPLOADED DOCUMENT / CODE CONTEXT:\n"""\n${documentText.slice(0, 10000)}\n"""\nCRITICAL: Use exact line numbers, variable names, or specific quotes from this document in your argument.`
@@ -327,7 +338,6 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 
       let roundInstruction = '';
       if (isDocumentMode) {
-        // 🔥 DOCUMENT MODE ROUND LOGIC
         if (round === 1) {
           roundInstruction = speaker === 'proponent'
             ? "OPENING DEFENSE: You are the Lead Author/Developer. Proudly present the core logic of this document. Explain why it is highly optimized, secure, and well-structured. (60-80 words)."
@@ -393,7 +403,6 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
       let proponentExtraInstruction = '';
 
       if (isDocumentMode) {
-        // 🔥 DOCUMENT MODE EXTRA INSTRUCTIONS
         opponentExtraInstruction = `Identify ONE major technical flaw, security risk, or bad practice in the provided document. Be extremely technical.`;
         proponentExtraInstruction = `Defend the architecture. Use technical jargon to explain why the code/document is efficient.`;
       } else if (isYoutubeMode) {
@@ -771,13 +780,14 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap in \`\`\`json.
     }
 
    return NextResponse.json({ error: 'Unknown request type' }, { status: 400 });
+  
+  // 🔥 FIX 3: Catch ब्लॉक को एकदम सही कर दिया है
   } catch (error: any) {
-    // 🔥 यह लाइन Render के Logs में असली एरर छाप देगी!
     console.error("FATAL API ERROR IN /api/debate:", error.message || error);
     
+    // अब यहाँ जो "ASLI ERROR" छपेगा, वो तुम्हें बिना Logs देखे तुम्हारी वेबसाइट पर दिख जाएगा
     return NextResponse.json({ 
-      error: 'An error occurred processing your request.',
-      details: error.message || String(error) 
+      error: `ASLI ERROR: ${error.message || String(error)}`
     }, { status: 500 });
   }
 }
