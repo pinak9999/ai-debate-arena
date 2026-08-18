@@ -57,7 +57,7 @@ function toManualTextStream(text: string): Response {
 async function generateSearchQuery(text: string): Promise<string> {
   try {
     const { text: query } = await generateText({
-      model: groq('llama-3.3-70b-versatile'),
+      model: groq('openai/gpt-oss-20be'),
       prompt: `You are an expert Google Search query generator. Extract a highly specific 3 to 5 word search query to fact-check the following statement. \nStatement: "${text.slice(0, 300)}"\nCRITICAL: Output ONLY the search keywords. Do NOT use quotes, do NOT explain, do NOT write "Search query:". Just the words.`,
       temperature: 0.1,
     });
@@ -477,7 +477,7 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       const finalMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) without formal greetings and avoid robotic connector words.` }];
 
       const { text: rawOutput } = await generateText({
-        model: groq('llama-3.3-70b-versatile'),
+        model: groq('openai/gpt-oss-20b'),
         temperature: 0.7,
         system: systemPrompt,
         messages: finalMessages as any,
@@ -498,7 +498,7 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         : '';
       const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback, written STRICTLY in ${language.toUpperCase()} Native Script, under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
       const { text } = await generateText({
-        model: groq('llama-3.3-70b-versatile'),
+        model: groq('openai/gpt-oss-20b'),
         temperature: 0.4,
         prompt: critiquePrompt
       });
@@ -571,7 +571,7 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap the JSON in markdown blocks
 }`;
 
       const { text } = await generateText({
-        model: groq('llama-3.3-70b-versatile'),
+        model: groq('openai/gpt-oss-20b'),
         temperature: 0.1,
         prompt: judgePrompt
       });
@@ -676,7 +676,7 @@ CRITICAL RULES:
 Respond STRICTLY with JSON ONLY. Do NOT wrap in \`\`\`json: {"pro": <number>, "opp": <number>}`;
 
       const { text } = await generateText({
-        model: groq('llama-3.3-70b-versatile'),
+        model: groq('openai/gpt-oss-20b'),
         temperature: 0.1,
         prompt
       });
@@ -719,7 +719,7 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap in \`\`\`json.
 {"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation strictly in ${language}", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
 
       const { text: result } = await generateText({
-        model: groq('llama-3.3-70b-versatile'),
+        model: groq('openai/gpt-oss-20b'),
         temperature: 0.1,
         prompt
       });
