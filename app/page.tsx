@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { RotateCcw, AlertTriangle } from 'lucide-react';
 import HeroSection from '@/components/HeroSection';
@@ -12,9 +12,6 @@ import { useDebate, DebateLanguage } from '@/hooks/useDebate';
 export default function Home() {
   const debate = useDebate();
   const [selectedLang, setSelectedLang] = useState<DebateLanguage>('Hindi');
-  
-  // 🔥 डेटाबेस में एक ही डिबेट को दो बार सेव होने से रोकने के लिए
-  const hasSaved = useRef(false);
 
   // 🔥 यहाँ 'document' टाइप और 'documentText' पैरामीटर को ऐड कर दिया गया है
   const handleStart = (
@@ -23,39 +20,8 @@ export default function Home() {
     subject: 'topic' | 'stock' | 'personality' | 'youtube' | 'document', 
     documentText?: string
   ) => {
-    hasSaved.current = false; // नई डिबेट शुरू होने पर सेव फ्लैग को रीसेट कर दो
     debate.startDebate({ topic: input, totalRounds: rounds, subject, language: selectedLang, documentText });
   };
-
-  // 🟢 डेटाबेस में डिबेट सेव करने का लॉजिक (जब डिबेट खत्म हो और जज का फैसला आ जाए)
-  useEffect(() => {
-    // अगर डिबेट खत्म हो गई है, स्कोर्स आ गए हैं, और अभी तक सेव नहीं हुई है
-    if (debate.status === 'finished' && debate.scores && !hasSaved.current) {
-      hasSaved.current = true; // तुरंत true कर दो ताकि दोबारा कॉल न हो
-
-      const saveDebateToDB = async () => {
-        try {
-          const res = await fetch('/api/history', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              topic: debate.topic,
-              mode: debate.subject,
-              messages: debate.messages,
-              winner: debate.scores?.winner || 'tie'
-            })
-          });
-          if (res.ok) {
-            console.log('✅ Debate successfully saved to MongoDB!');
-          }
-        } catch (error) {
-          console.error('❌ Failed to save debate:', error);
-        }
-      };
-
-      saveDebateToDB();
-    }
-  }, [debate.status, debate.scores, debate.topic, debate.subject, debate.messages]);
 
   const showHero    = debate.status === 'idle';
   const showArena   = debate.status !== 'idle';
