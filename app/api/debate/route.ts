@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
-// 🔥 FIX: Groq को हटाकर Google Generative AI लगा दिया है
-import { createGoogleGenerativeAI } from '@ai-sdk/google';
+import { createGroq } from '@ai-sdk/groq';
 
 export const maxDuration = 60;
 
-// 🔥 FIX: अब हम Gemini API का इस्तेमाल कर रहे हैं
-const google = createGoogleGenerativeAI({
-  apiKey: process.env.GOOGLE_API_KEY || '', 
+// 🔥 FIX: अगर API Key नहीं है, तो तुरंत क्रैश होने से बचाने के लिए || '' लगाया है
+const groq = createGroq({
+  apiKey: process.env.GROQ_API_KEY || '', 
 });
 
 // ─── UTILITY FUNCTIONS ───
@@ -58,7 +57,7 @@ function toManualTextStream(text: string): Response {
 async function generateSearchQuery(text: string): Promise<string> {
   try {
     const { text: query } = await generateText({
-      model: google('gemini-3.6-flash'), // 🔥 Gemini Model
+      model: groq('groq/compound'),
       prompt: `You are an expert Google Search query generator. Extract a highly specific 3 to 5 word search query to fact-check the following statement. \nStatement: "${text.slice(0, 300)}"\nCRITICAL: Output ONLY the search keywords. Do NOT use quotes, do NOT explain, do NOT write "Search query:". Just the words.`,
       temperature: 0.1,
     });
@@ -213,8 +212,8 @@ function clampScore(n: unknown, fallback: number, min = 10, max = 100): number {
 export async function POST(req: NextRequest) {
   try {
     // 🔥 FIX 1: API Keys की जांच पहले ही कर लो
-    if (!process.env.GOOGLE_API_KEY) {
-      return NextResponse.json({ error: 'ASLI ERROR: GOOGLE_API_KEY Environment Variable is missing!' }, { status: 500 });
+    if (!process.env.GROQ_API_KEY) {
+      return NextResponse.json({ error: 'ASLI ERROR: GROQ_API_KEY Environment Variable is missing!' }, { status: 500 });
     }
 
     // 🔥 FIX 2: req.json() को क्रैश होने से बचाया है
@@ -291,7 +290,7 @@ export async function POST(req: NextRequest) {
       const isStockMode = mode === 'stock';
       const isPersonalityMode = mode === 'personality';
       const isYoutubeMode = mode === 'youtube'; 
-      const isDocumentMode = mode === 'document'; 
+      const isDocumentMode = mode === 'document'; // 🔥 NEW DOCUMENT MODE
       const position = speaker === 'proponent' ? 'SUPPORTING' : 'OPPOSING';
 
       const messages = history.map((msg: { speaker: string; text: string }) => ({
@@ -478,7 +477,7 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
       const finalMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) without formal greetings and avoid robotic connector words.` }];
 
       const { text: rawOutput } = await generateText({
-        model: google('gemini-3.6-flash'), // 🔥 Gemini Model
+        model: groq('groq/compound'),
         temperature: 0.7,
         system: systemPrompt,
         messages: finalMessages as any,
@@ -499,7 +498,7 @@ ${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
         : '';
       const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback, written STRICTLY in ${language.toUpperCase()} Native Script, under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
       const { text } = await generateText({
-        model: google('gemini-3.6-flash'), // 🔥 Gemini Model
+        model: groq('groq/compound'),
         temperature: 0.4,
         prompt: critiquePrompt
       });
@@ -572,7 +571,7 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap the JSON in markdown blocks
 }`;
 
       const { text } = await generateText({
-        model: google('gemini-3.6-flash'), // 🔥 Gemini Model
+        model: groq('groq/compound'),
         temperature: 0.1,
         prompt: judgePrompt
       });
@@ -677,7 +676,7 @@ CRITICAL RULES:
 Respond STRICTLY with JSON ONLY. Do NOT wrap in \`\`\`json: {"pro": <number>, "opp": <number>}`;
 
       const { text } = await generateText({
-        model: google('gemini-3.6-flash'), // 🔥 Gemini Model
+        model: groq('groq/compound'),
         temperature: 0.1,
         prompt
       });
@@ -720,7 +719,7 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap in \`\`\`json.
 {"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation strictly in ${language}", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
 
       const { text: result } = await generateText({
-        model: google('gemini-3.6-flash'), // 🔥 Gemini Model
+        model: groq('groq/compound'),
         temperature: 0.1,
         prompt
       });
