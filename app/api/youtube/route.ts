@@ -84,10 +84,11 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
 
     // 🔥 FIX 2: सही मॉडल (gpt-oss-20b) और maxTokens ऐड किया ताकि लिमिट पार न हो!
     const { text: aiResponse } = await generateText({
-      model: groq('openai/gpt-oss-20b'), 
+      model: groq('llama-3.1-8b-instant'),
       temperature: 0.1,
-      maxTokens: 300, // <-- यह बहुत ज़रूरी है
-      prompt
+      messages: [
+        { role: 'user', content: prompt }
+      ]
     });
 
     // JSON पार्स करो
