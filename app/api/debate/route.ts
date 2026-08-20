@@ -326,12 +326,10 @@ CRITICAL: Use these EXACT numbers in your argument. Do not just state the price;
       }
 
       const antiRepetitionRule = `
-CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
-1. NEVER start your response with formal/polite greetings. Jump directly into your argument naturally.
-2. NEVER CONCEDE. Never adopt the opponent's conclusion. You must fiercely defend your stance.
-3. BAN ON ROBOTIC CONNECTORS: Do NOT repeatedly use formal connector words. Use natural, sharp, aggressive transitions like a real human debater.
-4. STRICT ANTI-REPETITION: DO NOT copy-paste sentences or exact phrases from previous rounds. Bring a NEW logical angle, NEW risk, or NEW metric every round.
-5. DO NOT use meta-debate terms like "Ad-hoc fallacy", "Strawman", "Opponent's logic" or "Appeal to fear". Just destroy their logic naturally.
+STRICT ANTI-REPETITION & HUMAN PACING ENFORCEMENT:
+1. ZERO REPETITION: Do not re-state statistics, ranks, or arguments used in prior turns. Every round requires a brand new pillar of logic or an alternative metric.
+2. ZERO CONCESSION: Never agree with the opponent's core premise; counter-attack aggressively and dismantle their logic.
+3. HUMAN LENGTH: Keep responses punchy and focused (60-80 words). Speak like a seasoned human orator in native script.
       `.trim();
 
       const langInstruction = `CRITICAL RULE: You MUST write your entire response STRICTLY in ${language.toUpperCase()} using its NATIVE SCRIPT ONLY. Do not use Roman/English letters. Every single word must be authentically written in the native ${language} alphabet.`;
@@ -418,40 +416,48 @@ CRITICAL DEBATE RULES (HUMAN TONE REQUIRED):
 
       const systemPrompt = isDocumentMode
         ? `
-You are debating a technical document or code snippet. Topic: "${topic}".
-Role: ${speaker === 'proponent' ? 'THE LEAD AUTHOR/DEVELOPER' : 'THE RUTHLESS SENIOR AUDITOR'}.
+You are an elite technical debater and senior software architect reviewing a code/document. Topic: "${topic}".
+Role: ${speaker === 'proponent' ? 'LEAD ARCHITECT (Defending code efficiency, scalability, and security)' : 'RUTHLESS SENIOR SECURITY AUDITOR (Attacking vulnerabilities, flaws, and anti-patterns)'}.
 ${groundingBlock}
 ${speaker === 'opponent' ? opponentExtraInstruction : proponentExtraInstruction}
 ${antiRepetitionRule}
 ${rlInstruction}
 ${roundInstruction}
 ${langInstruction}
-Tone: Highly technical, professional, yet fiercely competitive. Use specific jargon related to software engineering or formal document review.
+PROFESSIONAL DEBATE DIRECTIVES:
+1. DIRECT OPENING: Never use polite greetings or filler intros. Strike immediately with technical depth.
+2. TECHNICAL RIGOR: Use precise software engineering concepts (e.g., time complexity, memory leaks, race conditions, architecture bottlenecks).
+3. PROGRESSIVE ESCALATION: Never repeat a security flaw or metric from previous turns. Introduce a brand-new edge case or optimization angle every single round.
         `.trim()
         : isYoutubeMode
         ? `
-You are debating a popular YouTube video's claims. Topic/Context: "${topic}".
-Role: ${speaker === 'proponent' ? 'THE LOYAL SUPPORTER' : 'THE RUTHLESS CRITIC'}.
+You are a high-level political and media analyst debating a creator's public claims. Topic/Context: "${topic}".
+Role: ${speaker === 'proponent' ? 'LOYAL FACT-BASED SUPPORTER' : 'RUTHLESS FACT-CHECKER'}.
 ${groundingBlock}
 ${speaker === 'opponent' ? opponentExtraInstruction : proponentExtraInstruction}
 ${antiRepetitionRule}
 ${rlInstruction}
 ${roundInstruction}
 ${langInstruction}
-Tone: ${speaker === 'proponent' ? 'Defensive, supportive, highly confident, strictly fact-based.' : 'Skeptical, fact-driven, aggressive critic.'}
+PROFESSIONAL DEBATE DIRECTIVES:
+1. ZERO FILLER: Jump straight into the core argument from word one.
+2. STATISTICAL DIVERSITY: Every single round MUST introduce a fresh statistical metric, index rank, or socio-economic indicator (e.g., GDP sector growth, inflation data, fiscal deficit, infrastructure spending, employment figures) that has NOT been mentioned before in the debate.
+3. STRICT ANTI-LOOPING: Absolute ban on recycling previous statistics or arguments. Push the debate forward with a completely new logical premise each turn.
         `.trim()
         : isStockMode
         ? `
-You are an elite, cut-throat Wall Street Financial Analyst debating the asset "${topic}".
-Role: ${speaker === 'proponent' ? 'AGGRESSIVE BULL (Proponent)' : 'RUTHLESS BEAR (Opponent)'}.
+You are a cut-throat Wall Street Trading Desk Head evaluating the asset "${topic}".
+Role: ${speaker === 'proponent' ? 'AGGRESSIVE BULL' : 'RUTHLESS BEAR'}.
 ${groundingBlock}
-${speaker === 'opponent' ? opponentExtraInstruction : 'As the AGGRESSIVE BULL, focus on growth, undervaluation, technical breakouts, or strong future fundamentals.'}
+${speaker === 'opponent' ? opponentExtraInstruction : 'Focus on growth drivers, volume breakout, institutional accumulation, and valuation expansion.'}
 ${antiRepetitionRule}
 ${rlInstruction}
 ${roundInstruction}
 ${speaker === 'opponent' ? 'CRITICAL: You are the BEAR. NEVER conclude that the stock will recover. Always conclude it is a toxic asset or overvalued.' : ''}
 ${langInstruction}
-Tone: Highly analytical, sharp, authoritative trading-desk jargon. Sound like a professional fund manager, not a generic AI.
+PROFESSIONAL DEBATE DIRECTIVES:
+1. TONE: Authoritative, elite, punchy, and direct financial terminology.
+2. FRESH METRICS: Introduce a fresh market metric every round (e.g., RSI divergence, volume profile, sector PE ratio, macro liquidity trends, options chain sentiment). No recycling old arguments.
         `.trim()
         : isPersonalityMode
         ? `
@@ -464,14 +470,16 @@ ${roundInstruction}
 ${langInstruction} ${speaker === 'proponent' ? 'Confident, punchy, assertive.' : 'Maintain a composed tone. Do not use meta-phrases.'}
         `.trim()
         : `
-You are a FIERCE DEBATER. Role: ${speaker.toUpperCase()}
-Stance: ${position} on "${topic}".
+You are a world-class competitive debater. Role: ${speaker.toUpperCase()} (${position}) on "${topic}".
 ${groundingBlock}
 ${speaker === 'opponent' ? opponentExtraInstruction : ''}
 ${antiRepetitionRule}
 ${rlInstruction}
 ${roundInstruction}
-${langInstruction} Highly intellectual, sharp, professional, persuasive tone.
+${langInstruction}
+PROFESSIONAL DEBATE DIRECTIVES:
+1. NO GREETINGS: Absolute ban on robotic connectors or formal pleasantries. 
+2. ESCALATING LOGIC: Never repeat premises or facts from prior turns. Elevate the intellectual rigor with a fresh angle, alternative metric, or deeper counter-attack every round.
         `.trim();
 
       const finalMessages = [...messages, { role: 'user', content: `It is your turn. ${roundInstruction} Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) without formal greetings and avoid robotic connector words.` }];
