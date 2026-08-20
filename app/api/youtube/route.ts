@@ -4,8 +4,9 @@ import { createGroq } from '@ai-sdk/groq';
 
 export const maxDuration = 60;
 
+// 🔥 FIX 1: API Key क्रैश प्रोटेक्शन
 const groq = createGroq({
-  apiKey: process.env.GROQ_API_KEY,
+  apiKey: process.env.GROQ_API_KEY || '', 
 });
 
 // यूट्यूब URL से Video ID निकालने का फंक्शन
@@ -37,7 +38,6 @@ export async function POST(req: NextRequest) {
       const response = await fetch(rapidApiUrl, {
         method: 'GET',
         headers: {
-          // मैंने तुम्हारी Key यहाँ डाल दी है ताकि तुरंत काम करे (बाद में इसे .env में भी रख सकते हो)
           'x-rapidapi-key': process.env.RAPIDAPI_KEY || '2cd9076bebmshca16f5e8a867e13p1793c8jsn81bfb6374ed0',
           'x-rapidapi-host': 'youtube-transcript3.p.rapidapi.com'
         }
@@ -82,9 +82,11 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
   "claims": "A concise 3-4 sentence summary of the creator's main arguments and stance."
 }`;
 
+    // 🔥 FIX 2: सही मॉडल (gpt-oss-20b) और maxTokens ऐड किया ताकि लिमिट पार न हो!
     const { text: aiResponse } = await generateText({
-      model: groq('llama-3.1-8b-instant'),
+      model: groq('openai/gpt-oss-20b'), 
       temperature: 0.1,
+      maxTokens: 300, // <-- यह बहुत ज़रूरी है
       prompt
     });
 
@@ -108,8 +110,12 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
       claims: result.claims
     });
 
-  } catch (error) {
-    console.error("Global YouTube API Error:", error);
-    return NextResponse.json({ error: 'An error occurred while processing the video.' }, { status: 500 });
+  } catch (error: any) {
+    console.error("Global YouTube API Error:", error.message || error);
+    
+    // 🔥 FIX 3: अब अगर कोई एरर आया तो वो सीधा स्क्रीन पर दिखेगा!
+    return NextResponse.json({ 
+      error: `ASLI ERROR: ${error.message || String(error)}` 
+    }, { status: 500 });
   }
 }
