@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
-import { createGroq } from '@ai-sdk/groq';
+// 🔥 FIX 1: Groq को हटाकर Google Generative AI लगा दिया है
+import { createGoogleGenerativeAI } from '@ai-sdk/google';
 
 export const maxDuration = 60;
 
-// 🔥 FIX 1: API Key क्रैश प्रोटेक्शन
-const groq = createGroq({
-  apiKey: process.env.GROQ_API_KEY || '', 
+// 🔥 FIX 2: Gemini API का सेटअप
+const google = createGoogleGenerativeAI({
+  apiKey: process.env.GOOGLE_API_KEY || '', 
 });
 
 // यूट्यूब URL से Video ID निकालने का फंक्शन
@@ -70,7 +71,7 @@ export async function POST(req: NextRequest) {
     // LLM के लिए टेक्स्ट को लिमिट करो
     const limitedText = fullText.slice(0, 15000); 
 
-    // 2. Groq AI से वीडियो की समरी और मेन दावे (Claims) निकलवाओ
+    // 2. Google Gemini AI से वीडियो की समरी और मेन दावे (Claims) निकलवाओ
     const prompt = `You are an expert content analyzer. Read this transcript of a YouTube video and extract the core topic and the top 3 claims/arguments made by the creator.
 
 Transcript:
@@ -82,9 +83,9 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
   "claims": "A concise 3-4 sentence summary of the creator's main arguments and stance."
 }`;
 
-    // 🔥 FIX 2: सही मॉडल (gpt-oss-20b) और maxTokens ऐड किया ताकि लिमिट पार न हो!
+    // 🔥 FIX 3: यहाँ Gemini मॉडल लगा दिया है
     const { text: aiResponse } = await generateText({
-      model: groq('openai/gpt-oss-20b'),
+      model: google('gemini-1.5-flash'), // 🔥 Gemini Model
       temperature: 0.1,
       messages: [
         { role: 'user', content: prompt }
@@ -114,7 +115,7 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
   } catch (error: any) {
     console.error("Global YouTube API Error:", error.message || error);
     
-    // 🔥 FIX 3: अब अगर कोई एरर आया तो वो सीधा स्क्रीन पर दिखेगा!
+    // 🔥 FIX 4: अब अगर कोई एरर आया तो वो सीधा स्क्रीन पर दिखेगा!
     return NextResponse.json({ 
       error: `ASLI ERROR: ${error.message || String(error)}` 
     }, { status: 500 });
