@@ -85,7 +85,7 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
 
     // 🔥 FIX 3: यहाँ Gemini मॉडल लगा दिया है
     const { text: aiResponse } = await generateText({
-      model: google('gemini-2.5-flash'), // 🔥 Gemini Model
+      model: google('gemini-3.6-flash'), // 🔥 Gemini Model
       temperature: 0.1,
       messages: [
         { role: 'user', content: prompt }
