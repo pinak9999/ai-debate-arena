@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import { Orbitron, Inter } from 'next/font/google';
+import Sidebar from '@/components/Sidebar'; // 👈 यहाँ साइडबार को इम्पोर्ट किया है
 import './globals.css';
 
 // Use distinct variable names to avoid collision with Tailwind v4's --font-* namespace
@@ -32,10 +33,19 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${orbitron.variable} ${inter.variable}`}>
       <body
-        className="antialiased overflow-x-hidden"
+        // 👈 यहाँ flex और h-screen लगाया है ताकि लेआउट दो हिस्सों में बंट जाए
+        className="antialiased flex h-screen overflow-hidden" 
         style={{ backgroundColor: 'var(--cyber-dark)', fontFamily: 'var(--font-inter), sans-serif' }}
       >
-        {children}
+        
+        {/* 1. बाईं तरफ (Left): तुम्हारा नया ChatGPT स्टाइल साइडबार */}
+        <Sidebar />
+
+        {/* 2. दाईं तरफ (Right): मेन डिबेट एरिया (यहाँ स्क्रॉल होगा) */}
+        <main className="flex-1 h-screen overflow-y-auto relative">
+          {children}
+        </main>
+
       </body>
     </html>
   );
