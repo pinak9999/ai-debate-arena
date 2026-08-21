@@ -65,8 +65,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Could not fetch transcript. Make sure the video has captions enabled.' }, { status: 400 });
     }
 
-    // 🔥 FIX: 12,000 लेटर्स की लिमिट (ताकि तुम्हारी 8K TPM लिमिट क्रॉस न हो और क्रैश न हो)
-    const limitedText = fullText.slice(0, 12000); 
+    // 🔥 THE MASTER UPGRADE: 
+    // चूँकि 'groq/compound' की 70K लिमिट है, हम इसे 25,000 लेटर्स (आधी वीडियो) दे सकते हैं 
+    // ताकि लंबी वीडियो की समरी भी एकदम सटीक बने!
+    const limitedText = fullText.slice(0, 25000); 
 
     // 2. Groq AI से वीडियो की समरी और मेन दावे (Claims) निकलवाओ
     const prompt = `You are an expert content analyzer. Read this transcript of a YouTube video and extract the core topic and the top 3 claims/arguments made by the creator.
@@ -83,14 +85,21 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
     let result;
     
     try {
-      // 🔥 THE FIX: तुम्हारी लिस्ट का सबसे पावरफुल और एक्टिव मॉडल
       const { text: aiResponse } = await generateText({
-        model: groq('groq/compound'), 
+        model: groq('groq/compound'), // 🔥 Unlimited TPM Model
         temperature: 0.1,
         prompt
       });
 
-      const cleanJson = aiResponse.replace(/```json/g, '').replace(/```/g, '').trim();
+      // 🔥 BULLETPROOF JSON PARSER: AI अगर एक्स्ट्रा टेक्स्ट दे दे, तो भी क्रैश नहीं होगा
+      let cleanJson = aiResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const startIndex = cleanJson.indexOf('{');
+      const endIndex = cleanJson.lastIndexOf('}');
+      
+      if (startIndex !== -1 && endIndex !== -1) {
+        cleanJson = cleanJson.substring(startIndex, endIndex + 1);
+      }
+      
       result = JSON.parse(cleanJson);
       
     } catch (aiError) {
