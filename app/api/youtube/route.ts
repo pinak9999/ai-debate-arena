@@ -83,7 +83,7 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
 }`;
 
     const { text: aiResponse } = await generateText({
-      model: groq('openai/gpt-oss-20b'),
+      model: groq('groq/compound'),
       temperature: 0.1,
       prompt
     });
