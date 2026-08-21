@@ -85,7 +85,7 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
     try {
       // 🔥 THE FIX: तुम्हारी लिस्ट का सबसे पावरफुल और एक्टिव मॉडल
       const { text: aiResponse } = await generateText({
-        model: groq('openai/gpt-oss-120b'), 
+        model: groq('groq/compound'), 
         temperature: 0.1,
         prompt
       });
