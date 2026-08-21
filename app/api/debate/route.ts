@@ -57,7 +57,7 @@ function toManualTextStream(text: string): Response {
 async function generateSearchQuery(text: string): Promise<string> {
   try {
     const { text: query } = await generateText({
-      model: groq('groq/compounde'), // 🔥 Model Upgraded
+      model: groq('groq/compound'), // 🔥 Typo Fixed: 'compounde' से 'compound' कर दिया
       prompt: `You are an expert Google Search query generator. Extract a highly specific 3 to 5 word search query to fact-check the following statement. \nStatement: "${text.slice(0, 300)}"\nCRITICAL: Output ONLY the search keywords. Do NOT use quotes, do NOT explain, do NOT write "Search query:". Just the words.`,
       temperature: 0.1,
     });
@@ -235,6 +235,13 @@ export async function POST(req: NextRequest) {
       body = await req.json();
     } catch (err) {
       return NextResponse.json({ error: 'ASLI ERROR: Invalid or empty JSON body received from frontend.' }, { status: 400 });
+    }
+
+    // 🔥 THE MASTER TPM FIX 🔥
+    // यह ट्रांसक्रिप्ट को 6000 कैरेक्टर्स पर काट देगा।
+    // इससे AI को वीडियो का कॉन्टेक्स्ट भी मिल जाएगा, और बैकग्राउंड में होने वाली 4-5 कॉल्स से TPM लिमिट भी क्रॉस नहीं होगी।
+    if (body.topic && typeof body.topic === 'string' && body.topic.length > 6000) {
+      body.topic = body.topic.slice(0, 6000) + "... [CONTEXT TRUNCATED TO SAVE TPM LIMIT]";
     }
 
     if (body.type === 'stock_data') {
@@ -507,7 +514,7 @@ Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) 
       ];
 
       const { text: rawOutput } = await generateText({
-        model: groq('groq/compound'), // 🔥 Model Upgraded
+        model: groq('groq/compound'),
         temperature: 0.7,
         system: systemPrompt,
         messages: finalMessages as any,
@@ -554,7 +561,7 @@ Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) 
         : '';
       const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback, written STRICTLY in ${language.toUpperCase()} Native Script, under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
       const { text } = await generateText({
-        model: groq('groq/compound'), // 🔥 Model Upgraded
+        model: groq('groq/compound'),
         temperature: 0.4,
         prompt: critiquePrompt
       });
@@ -627,7 +634,7 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap the JSON in markdown blocks
 }`;
 
       const { text } = await generateText({
-        model: groq('groq/compound'), // 🔥 Model Upgraded
+        model: groq('groq/compound'),
         temperature: 0.1,
         prompt: judgePrompt
       });
@@ -732,7 +739,7 @@ CRITICAL RULES:
 Respond STRICTLY with JSON ONLY. Do NOT wrap in \`\`\`json: {"pro": <number>, "opp": <number>}`;
 
       const { text } = await generateText({
-        model: groq('groq/compound'), // 🔥 Model Upgraded
+        model: groq('groq/compound'),
         temperature: 0.1,
         prompt
       });
@@ -775,7 +782,7 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap in \`\`\`json.
 {"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation strictly in ${language}", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
 
       const { text: result } = await generateText({
-        model: groq('groq/compound'), // 🔥 Model Upgraded
+        model: groq('groq/compound'),
         temperature: 0.1,
         prompt
       });
