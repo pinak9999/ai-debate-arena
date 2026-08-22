@@ -9,7 +9,7 @@ interface SidebarProps {
   onSelectDebate: (debate: any) => void;
   onNewDebate: () => void;
   onDeleteDebate?: (id: string, e: React.MouseEvent) => void; 
-  onClose: () => void; // 🔥 नया क्लोज फंक्शन
+  onClose: () => void; 
 }
 
 const getModeIcon = (mode: string) => {
@@ -26,7 +26,6 @@ export default function Sidebar({ isOpen, historyList, onSelectDebate, onNewDeba
   return (
     <>
       {/* ─── BACKGROUND BLUR OVERLAY ─── */}
-      {/* जब साइडबार खुलेगा, तो पीछे का हिस्सा हल्का काला और ब्लर हो जाएगा */}
       <div 
         className={`fixed inset-0 bg-black/50 backdrop-blur-sm z-[50] transition-opacity duration-300 ${isOpen ? 'opacity-100 visible' : 'opacity-0 invisible'}`}
         onClick={onClose}
@@ -86,6 +85,17 @@ export default function Sidebar({ isOpen, historyList, onSelectDebate, onNewDeba
                   <p className="font-medium text-slate-300 group-hover:text-white text-sm line-clamp-2 leading-snug transition-colors drop-shadow-md">
                     {item.topic}
                   </p>
+                  
+                  {/* 🔥 ये रहा डिलीट बटन जिसे मैं भूल गया था! */}
+                  {onDeleteDebate && (
+                    <button 
+                      onClick={(e) => onDeleteDebate(item._id || item.id, e)}
+                      className="opacity-0 group-hover:opacity-100 text-slate-500 hover:text-red-400 p-1.5 transition-all rounded-md hover:bg-red-500/10 shrink-0 z-10"
+                      title="Delete Archive"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/5 group-hover:border-cyan-500/20 transition-colors">
