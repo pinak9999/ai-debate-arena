@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { RotateCcw, AlertTriangle, Menu } from 'lucide-react';
+import { RotateCcw, AlertTriangle, Menu, History } from 'lucide-react'; // 🔥 History आइकॉन जोड़ा है
 import HeroSection from '@/components/HeroSection';
 import DebateArena from '@/components/DebateArena';
 import JudgeVerdict from '@/components/JudgeVerdict';
@@ -15,7 +15,7 @@ export default function Home() {
   const [selectedLang, setSelectedLang] = useState<DebateLanguage>('Hindi');
 
   const [historyList, setHistoryList] = useState<any[]>([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // 🔥 डिफ़ॉल्ट रूप से बंद रहेगा ताकि UI साफ दिखे
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   const savedDebateRef = useRef(false);
 
   const fetchHistory = async () => {
@@ -65,12 +65,12 @@ export default function Home() {
   const handleNewDebate = () => {
     debate.resetDebate();
     savedDebateRef.current = false;
-    setIsSidebarOpen(false); // नई डिबेट शुरू होते ही साइडबार बंद
+    setIsSidebarOpen(false); 
   };
 
   const handleSelectDebate = (item: any) => {
     debate.loadPastDebate(item);
-    setIsSidebarOpen(false); // 🔥 डिबेट सेलेक्ट करते ही साइडबार अपने आप बंद हो जाएगा
+    setIsSidebarOpen(false); 
   };
 
   const showHero    = debate.status === 'idle';
@@ -78,7 +78,6 @@ export default function Home() {
   const showVerdict = debate.status === 'finished' && !!debate.scores;
 
   return (
-    // 🔥 Flex हटा दिया गया है। अब यह नॉर्मल फुल-स्क्रीन लेआउट है।
     <div className="relative min-h-screen bg-[#08090c] overflow-hidden font-sans">
       
       {/* ─── SIDEBAR OVERLAY COMPONENT ─── */}
@@ -90,12 +89,19 @@ export default function Home() {
         onClose={() => setIsSidebarOpen(false)} 
       />
 
-      {/* ─── FLOATING MENU BUTTON ─── */}
+      {/* ─── 🔥 CREATIVE VERTICAL SIDE-TAB (EDGE HANDLE) ─── */}
+      {/* यह बटन अब टॉप-लेफ्ट से हटकर, स्क्रीन के बीचों-बीच बायीं तरफ चिपका रहेगा */}
       <button 
         onClick={() => setIsSidebarOpen(true)}
-        className="fixed top-5 left-5 z-[40] p-2.5 text-cyan-500 bg-[#08090c]/80 backdrop-blur-md rounded-xl hover:bg-cyan-900/30 transition-all border border-cyan-500/30 shadow-[0_0_15px_rgba(0,212,255,0.15)] group"
+        className="fixed top-1/2 left-0 -translate-y-1/2 z-[40] flex flex-col items-center gap-3 py-5 px-1.5 bg-[#05070a]/90 backdrop-blur-xl border border-l-0 border-cyan-500/40 rounded-r-xl hover:bg-cyan-900/50 hover:px-2.5 transition-all duration-300 shadow-[0_0_20px_rgba(0,212,255,0.15)] group"
       >
-        <Menu className="w-5 h-5 group-hover:scale-110 transition-transform" />
+        <Menu className="w-4 h-4 text-cyan-400 group-hover:text-white transition-colors drop-shadow-md" />
+        <span 
+          style={{ writingMode: 'vertical-rl', transform: 'rotate(180deg)' }} 
+          className="text-[9px] font-orbitron font-bold text-cyan-400 group-hover:text-white tracking-[0.25em] uppercase transition-colors"
+        >
+          Archives
+        </span>
       </button>
 
       {/* ─── MAIN DEBATE AREA ─── */}
@@ -141,8 +147,8 @@ export default function Home() {
               transition={{ duration: 0.55 }}
               className="min-h-screen pt-4"
             >
-              {/* 🔥 Header में pl-16 (padding-left) दिया है ताकि मेन्यू बटन इसके ऊपर न आए */}
-              <div className="flex items-center justify-between px-4 pb-1 max-w-7xl mx-auto relative z-20 pl-20 pt-2">
+              {/* 🔥 Arena हेडर को वापस सेंटर कर दिया गया है (pt-5 और px-4) */}
+              <div className="flex items-center justify-between px-4 pt-5 pb-1 max-w-7xl mx-auto relative z-20">
                 <div> 
                   <h1 className="font-orbitron font-black text-base text-white tracking-[0.18em] uppercase">
                     {debate.subject === 'stock' ? 'Financial War-Room' : 
@@ -165,7 +171,6 @@ export default function Home() {
                 </button>
               </div>
 
-              {/* ... बाकी का पूरा Arena और Verdict कोड बिल्कुल सेम ... */}
               <AnimatePresence>
                 {debate.status === 'error' && debate.error && (
                   <motion.div
