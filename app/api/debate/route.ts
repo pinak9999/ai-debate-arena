@@ -4,7 +4,7 @@ import { createGroq } from '@ai-sdk/groq';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
-// 🔥 FIX: अगर API Key नहीं है, तो तुरंत क्रैश होने से बचाने के लिए || '' लगाया है
+
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY || '', 
 });
@@ -57,7 +57,8 @@ function toManualTextStream(text: string): Response {
 async function generateSearchQuery(text: string): Promise<string> {
   try {
     const { text: query } = await generateText({
-      model: groq('groq/compound'), // 🔥 Typo Fixed: 'compounde' से 'compound' कर दिया
+      model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
+      maxTokens: 60,
       prompt: `You are an expert Google Search query generator. Extract a highly specific 3 to 5 word search query to fact-check the following statement. \nStatement: "${text.slice(0, 300)}"\nCRITICAL: Output ONLY the search keywords. Do NOT use quotes, do NOT explain, do NOT write "Search query:". Just the words.`,
       temperature: 0.1,
     });
@@ -152,13 +153,11 @@ async function searchTavily(query: string): Promise<{ answer: string | null; sou
   }
 }
 
-// 🔥 FIX: Tavily Crash & Fallback Handling
 async function groundWithTavily(text: string): Promise<{ snippet: string; sources: TavilySource[] } | null> {
   try {
     const query = await generateSearchQuery(text);
     const result = await searchTavily(query);
     
-    // अगर Tavily से डेटा न मिले, तो सेफ फॉलबैक
     if (!result || (!result.answer && result.sources.length === 0)) {
       return { 
         snippet: "General logical reasoning, established factual consensus, and foundational principles.", 
@@ -237,11 +236,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ASLI ERROR: Invalid or empty JSON body received from frontend.' }, { status: 400 });
     }
 
-    // 🔥 THE MASTER TPM FIX 🔥
-    // यह ट्रांसक्रिप्ट को 6000 कैरेक्टर्स पर काट देगा।
-    // इससे AI को वीडियो का कॉन्टेक्स्ट भी मिल जाएगा, और बैकग्राउंड में होने वाली 4-5 कॉल्स से TPM लिमिट भी क्रॉस नहीं होगी।
-    if (body.topic && typeof body.topic === 'string' && body.topic.length > 6000) {
-      body.topic = body.topic.slice(0, 6000) + "... [CONTEXT TRUNCATED TO SAVE TPM LIMIT]";
+    // 🔥 THE MASTER RATE LIMIT (TPM) FIX 🔥
+    // YouTube का टेक्स्ट अगर 7000 कैरेक्टर्स (लगभग 1500 टोकन्स) से बड़ा है, तो उसे यहाँ काट दो।
+    // इससे AI को वीडियो का कॉन्टेक्स्ट भी मिल जाएगा, और बैकग्राउंड कॉल्स से TPM (70k limit) कभी क्रॉस नहीं होगा।
+    if (body.topic && typeof body.topic === 'string' && body.topic.length > 7000) {
+      body.topic = body.topic.slice(0, 7000) + "... [CONTEXT TRUNCATED TO SAVE TPM LIMIT]";
     }
 
     if (body.type === 'stock_data') {
@@ -322,7 +321,7 @@ export async function POST(req: NextRequest) {
       if (isDocumentMode) {
         const documentText = body.documentText || '';
         groundingBlock = documentText 
-          ? `UPLOADED DOCUMENT / CODE CONTEXT:\n"""\n${documentText.slice(0, 10000)}\n"""\nCRITICAL: Use exact line numbers, variable names, or specific quotes from this document in your argument.`
+          ? `UPLOADED DOCUMENT / CODE CONTEXT:\n"""\n${documentText.slice(0, 7000)}\n"""\nCRITICAL: Use exact line numbers, variable names, or specific quotes from this document in your argument.`
           : `No document provided. Argue based on general software engineering or business principles.`;
       } else if (isStockMode) {
         groundingBlock = stockContext
@@ -345,7 +344,6 @@ CRITICAL: Use these EXACT numbers in your argument. Do not just state the price;
           : `Rely on strong logical deduction.`;
       }
 
-      // 🔥 FIX: Strict Anti-Repetition Rule
       const antiRepetitionRule = `
 STRICT ANTI-REPETITION & HUMAN PACING ENFORCEMENT:
 1. ZERO REPETITION: Do not re-state statistics, ranks, or arguments used in prior turns. Every round requires a brand new pillar of logic or an alternative metric.
@@ -514,8 +512,9 @@ Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) 
       ];
 
       const { text: rawOutput } = await generateText({
-        model: groq('groq/compound'),
+        model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
         temperature: 0.7,
+        maxTokens: 250, 
         system: systemPrompt,
         messages: finalMessages as any,
       });
@@ -539,7 +538,6 @@ Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) 
 
       let cleanOutput = stripMetaCommentary(stripFakeCitations(safeOutput));
 
-      // 🔥 THE ULTIMATE FIX: अगर सफाई के बाद डिब्बा खाली हो जाए, तो यह डायलॉग फायर होगा
       if (!cleanOutput || cleanOutput.trim() === '') {
         console.warn("⚠️ AI returned empty string after cleaning! Triggering blank fallback.");
         cleanOutput = language.toLowerCase() === 'english'
@@ -561,8 +559,9 @@ Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) 
         : '';
       const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback, written STRICTLY in ${language.toUpperCase()} Native Script, under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
       const { text } = await generateText({
-        model: groq('groq/compound'),
+        model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
         temperature: 0.4,
+        maxTokens: 100, 
         prompt: critiquePrompt
       });
       return NextResponse.json({ critique: stripFakeCitations(text) });
@@ -634,8 +633,9 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap the JSON in markdown blocks
 }`;
 
       const { text } = await generateText({
-        model: groq('groq/compound'),
+        model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
         temperature: 0.1,
+        maxTokens: 300,
         prompt: judgePrompt
       });
 
@@ -739,8 +739,9 @@ CRITICAL RULES:
 Respond STRICTLY with JSON ONLY. Do NOT wrap in \`\`\`json: {"pro": <number>, "opp": <number>}`;
 
       const { text } = await generateText({
-        model: groq('groq/compound'),
+        model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
         temperature: 0.1,
+        maxTokens: 60, 
         prompt
       });
       
@@ -782,8 +783,9 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap in \`\`\`json.
 {"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation strictly in ${language}", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
 
       const { text: result } = await generateText({
-        model: groq('groq/compound'),
+        model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
         temperature: 0.1,
+        maxTokens: 120, 
         prompt
       });
 
