@@ -2,24 +2,22 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { RotateCcw, AlertTriangle, Menu } from 'lucide-react'; // 🔥 Menu आइकॉन
+import { RotateCcw, AlertTriangle, Menu } from 'lucide-react';
 import HeroSection from '@/components/HeroSection';
 import DebateArena from '@/components/DebateArena';
 import JudgeVerdict from '@/components/JudgeVerdict';
 import ParticleBackground from '@/components/ParticleBackground';
-import Sidebar from '@/components/Sidebar'; // 🔥 साइडबार
+import Sidebar from '@/components/Sidebar';
 import { useDebate, DebateLanguage } from '@/hooks/useDebate'; 
 
 export default function Home() {
   const debate = useDebate();
   const [selectedLang, setSelectedLang] = useState<DebateLanguage>('Hindi');
 
-  // ─── 🗄️ HISTORY & SIDEBAR STATES ───
   const [historyList, setHistoryList] = useState<any[]>([]);
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false); // 🔥 डिफ़ॉल्ट रूप से बंद रहेगा ताकि UI साफ दिखे
   const savedDebateRef = useRef(false);
 
-  // 1. डेटाबेस से पुरानी डिबेट्स मंगाना
   const fetchHistory = async () => {
     try {
       const res = await fetch('/api/debate-history');
@@ -32,12 +30,10 @@ export default function Home() {
     }
   };
 
-  // पेज लोड होते ही डिबेट्स ले आओ
   useEffect(() => {
     fetchHistory();
   }, []);
 
-  // 2. ऑटो-सेव लॉजिक: जब डिबेट खत्म हो और स्कोर आ जाए, तो सेव करो
   useEffect(() => {
     if (debate.status === 'finished' && debate.scores && !savedDebateRef.current) {
       savedDebateRef.current = true;
@@ -56,7 +52,6 @@ export default function Home() {
     }
   }, [debate.status, debate.scores, debate.topic, debate.subject, debate.language, debate.messages]);
 
-  // ─── HANDLERS ───
   const handleStart = (
     input: string, 
     rounds: number, 
@@ -70,11 +65,12 @@ export default function Home() {
   const handleNewDebate = () => {
     debate.resetDebate();
     savedDebateRef.current = false;
+    setIsSidebarOpen(false); // नई डिबेट शुरू होते ही साइडबार बंद
   };
 
-  // 🔥 अलर्ट हटाकर असली लोड फंक्शन डाल दिया गया है! 
   const handleSelectDebate = (item: any) => {
     debate.loadPastDebate(item);
+    setIsSidebarOpen(false); // 🔥 डिबेट सेलेक्ट करते ही साइडबार अपने आप बंद हो जाएगा
   };
 
   const showHero    = debate.status === 'idle';
@@ -82,18 +78,28 @@ export default function Home() {
   const showVerdict = debate.status === 'finished' && !!debate.scores;
 
   return (
-    <div className="flex h-screen bg-[#08090c] overflow-hidden font-sans">
+    // 🔥 Flex हटा दिया गया है। अब यह नॉर्मल फुल-स्क्रीन लेआउट है।
+    <div className="relative min-h-screen bg-[#08090c] overflow-hidden font-sans">
       
-      {/* ─── SIDEBAR COMPONENT ─── */}
+      {/* ─── SIDEBAR OVERLAY COMPONENT ─── */}
       <Sidebar 
         isOpen={isSidebarOpen} 
         historyList={historyList} 
         onSelectDebate={handleSelectDebate} 
-        onNewDebate={handleNewDebate} 
+        onNewDebate={handleNewDebate}
+        onClose={() => setIsSidebarOpen(false)} 
       />
 
+      {/* ─── FLOATING MENU BUTTON ─── */}
+      <button 
+        onClick={() => setIsSidebarOpen(true)}
+        className="fixed top-5 left-5 z-[40] p-2.5 text-cyan-500 bg-[#08090c]/80 backdrop-blur-md rounded-xl hover:bg-cyan-900/30 transition-all border border-cyan-500/30 shadow-[0_0_15px_rgba(0,212,255,0.15)] group"
+      >
+        <Menu className="w-5 h-5 group-hover:scale-110 transition-transform" />
+      </button>
+
       {/* ─── MAIN DEBATE AREA ─── */}
-      <main className="relative flex-1 h-full overflow-y-auto">
+      <main className="relative h-screen overflow-y-auto w-full">
         <ParticleBackground />
 
         {/* Cyber Grid Pattern */}
@@ -108,14 +114,6 @@ export default function Home() {
           }}
         />
 
-        {/* Sidebar Toggle Button */}
-        <button 
-          onClick={() => setIsSidebarOpen(!isSidebarOpen)}
-          className="absolute top-5 left-4 z-50 p-2 text-white/50 hover:text-cyan-400 bg-white/5 rounded-lg hover:bg-white/10 transition border border-white/10"
-        >
-          <Menu className="w-5 h-5" />
-        </button>
-
         <AnimatePresence mode="wait">
           {showHero && (
             <motion.div
@@ -123,7 +121,7 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.3 } }}
-              className="w-full min-h-screen relative z-10 flex flex-col justify-between pt-10" 
+              className="w-full min-h-screen relative z-10 flex flex-col justify-between" 
             >
               <HeroSection 
                 onStart={handleStart} 
@@ -141,10 +139,11 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.55 }}
-              className="min-h-screen pt-12"
+              className="min-h-screen pt-4"
             >
-              <div className="flex items-center justify-between px-4 pb-1 max-w-7xl mx-auto relative z-20">
-                <div className="ml-10"> 
+              {/* 🔥 Header में pl-16 (padding-left) दिया है ताकि मेन्यू बटन इसके ऊपर न आए */}
+              <div className="flex items-center justify-between px-4 pb-1 max-w-7xl mx-auto relative z-20 pl-20 pt-2">
+                <div> 
                   <h1 className="font-orbitron font-black text-base text-white tracking-[0.18em] uppercase">
                     {debate.subject === 'stock' ? 'Financial War-Room' : 
                      debate.subject === 'personality' ? 'Personality Clash Arena' : 
@@ -166,6 +165,7 @@ export default function Home() {
                 </button>
               </div>
 
+              {/* ... बाकी का पूरा Arena और Verdict कोड बिल्कुल सेम ... */}
               <AnimatePresence>
                 {debate.status === 'error' && debate.error && (
                   <motion.div
