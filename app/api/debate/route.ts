@@ -57,8 +57,7 @@ function toManualTextStream(text: string): Response {
 async function generateSearchQuery(text: string): Promise<string> {
   try {
     const { text: query } = await generateText({
-      model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
-      maxTokens: 60,
+      model: groq('groq/compound'),
       prompt: `You are an expert Google Search query generator. Extract a highly specific 3 to 5 word search query to fact-check the following statement. \nStatement: "${text.slice(0, 300)}"\nCRITICAL: Output ONLY the search keywords. Do NOT use quotes, do NOT explain, do NOT write "Search query:". Just the words.`,
       temperature: 0.1,
     });
@@ -236,9 +235,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ASLI ERROR: Invalid or empty JSON body received from frontend.' }, { status: 400 });
     }
 
-    // 🔥 THE MASTER RATE LIMIT (TPM) FIX 🔥
-    // YouTube का टेक्स्ट अगर 7000 कैरेक्टर्स (लगभग 1500 टोकन्स) से बड़ा है, तो उसे यहाँ काट दो।
-    // इससे AI को वीडियो का कॉन्टेक्स्ट भी मिल जाएगा, और बैकग्राउंड कॉल्स से TPM (70k limit) कभी क्रॉस नहीं होगा।
+    // YouTube का टेक्स्ट अगर 7000 कैरेक्टर्स से बड़ा है, तो उसे यहाँ काट दो।
     if (body.topic && typeof body.topic === 'string' && body.topic.length > 7000) {
       body.topic = body.topic.slice(0, 7000) + "... [CONTEXT TRUNCATED TO SAVE TPM LIMIT]";
     }
@@ -512,9 +509,8 @@ Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) 
       ];
 
       const { text: rawOutput } = await generateText({
-        model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
+        model: groq('groq/compound'),
         temperature: 0.7,
-        maxTokens: 250, 
         system: systemPrompt,
         messages: finalMessages as any,
       });
@@ -559,17 +555,13 @@ Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) 
         : '';
       const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback, written STRICTLY in ${language.toUpperCase()} Native Script, under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
       const { text } = await generateText({
-        model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
+        model: groq('groq/compound'),
         temperature: 0.4,
-        maxTokens: 100, 
         prompt: critiquePrompt
       });
       return NextResponse.json({ critique: stripFakeCitations(text) });
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // 3. JUDGE VERDICT
-    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'judge_verdict') {
       const { topic, history = [], mode = 'topic', language = 'Hindi', audienceScore } = body;
       const biasNote = mode === 'personality'
@@ -633,9 +625,8 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap the JSON in markdown blocks
 }`;
 
       const { text } = await generateText({
-        model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
+        model: groq('groq/compound'),
         temperature: 0.1,
-        maxTokens: 300,
         prompt: judgePrompt
       });
 
@@ -691,9 +682,6 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap the JSON in markdown blocks
       });
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // 4. ROUND SCORE
-    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'round_score') {
       const { topic, history = [], round, language = 'Hindi' } = body;
 
@@ -739,9 +727,8 @@ CRITICAL RULES:
 Respond STRICTLY with JSON ONLY. Do NOT wrap in \`\`\`json: {"pro": <number>, "opp": <number>}`;
 
       const { text } = await generateText({
-        model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
+        model: groq('groq/compound'),
         temperature: 0.1,
-        maxTokens: 60, 
         prompt
       });
       
@@ -759,9 +746,6 @@ Respond STRICTLY with JSON ONLY. Do NOT wrap in \`\`\`json: {"pro": <number>, "o
       });
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // 5. FALLACY & TONE CHECK
-    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text, topic, language = 'Hindi' } = body;
       const prompt = `You are an expert, UNBIASED Debate Moderator. Analyze this statement (written in ${language}) for GENUINE logical fallacies.
@@ -783,9 +767,8 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap in \`\`\`json.
 {"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation strictly in ${language}", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
 
       const { text: result } = await generateText({
-        model: groq('groq/compound'), // 🔥 USING YOUR PREFERRED UNLIMITED MODEL
+        model: groq('groq/compound'),
         temperature: 0.1,
-        maxTokens: 120, 
         prompt
       });
 
@@ -810,9 +793,6 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap in \`\`\`json.
       return NextResponse.json(finalParsed);
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // 6. FACT CHECK
-    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fact_check') {
       const { claim, language = 'Hindi' } = body;
       try {
