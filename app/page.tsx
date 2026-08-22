@@ -146,7 +146,7 @@ export default function Home() {
             >
               <HeroSection 
                 onStart={handleStart} 
-                mode={debate.subject} 
+               mode={debate.subject as any}
                 setMode={debate.setMode} 
                 selectedLang={selectedLang} 
                 setSelectedLang={setSelectedLang} 
