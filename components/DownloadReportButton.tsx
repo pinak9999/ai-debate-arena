@@ -26,51 +26,31 @@ export function DownloadReportButton({
     setIsGenerating(true);
 
     try {
-      const html2canvas = (await import('html2canvas')).default;
-      const { jsPDF } = await import('jspdf');
+      // 🔥 Naya aur advance PDF engine jo page breaks samajhta hai
+      const html2pdf = (await import('html2pdf.js')).default;
 
       const element = hiddenReportRef.current;
-      
-      // Make element temporarily visible for capture
       element.style.display = 'block';
 
-      const canvas = await html2canvas(element, {
-        scale: 2, 
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#0B1121', // 🔥 Deep Dark Background
-      });
+      const safeTopic = (topic || 'debate').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
+
+      const opt = {
+        margin:       [30, 0, 30, 0], // Top aur Bottom margin taaki edge par text na touch ho
+        filename:     `Debate-Report_${safeTopic}.pdf`,
+        image:        { type: 'jpeg', quality: 1 },
+        html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#0B1121' },
+        jsPDF:        { unit: 'pt', format: 'a4', orientation: 'portrait' },
+        pagebreak:    { mode: ['css', 'legacy'] } // 🔥 THE MAGIC FIX: Responds to CSS page breaks
+      };
+
+      await html2pdf().set(opt).from(element).save();
 
       element.style.display = 'none';
-
-      const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF('p', 'pt', 'a4');
-      
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      
-      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
-      
-      let heightLeft = imgHeight;
-      let position = 0;
-
-      // Multi-page fix
-      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-      heightLeft -= pageHeight;
-
-      while (heightLeft > 0) {
-        position -= pageHeight; 
-        pdf.addPage();
-        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
-        heightLeft -= pageHeight;
-      }
-      
-      const safeTopic = (topic || 'debate').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
-      pdf.save(`Debate-Report_${safeTopic}.pdf`);
 
     } catch (error) {
       console.error("PDF Generation Error:", error);
       alert("PDF generate karne mein problem aayi. Please try again.");
+      if (hiddenReportRef.current) hiddenReportRef.current.style.display = 'none';
     } finally {
       setIsGenerating(false);
     }
@@ -87,7 +67,7 @@ export function DownloadReportButton({
         disabled={disabled || isGenerating}
         className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold tracking-wide inline-flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)]"
       >
-        {isGenerating ? '⏳ Generating PDF...' : '📄 Export Premium PDF Report'}
+        {isGenerating ? '⏳ Generating Pro PDF...' : '📄 Export Premium PDF'}
       </button>
 
       {/* ─── HIDDEN PREMIUM DARK HTML REPORT ─── */}
@@ -113,7 +93,7 @@ export function DownloadReportButton({
         </div>
 
         {/* META DATA */}
-        <div style={{ marginBottom: '35px' }}>
+        <div style={{ marginBottom: '35px', pageBreakInside: 'avoid' }}>
           <p style={{ fontSize: '14px', margin: '0 0 5px 0' }}>
             <strong style={{ color: '#94A3B8' }}>DEBATE TOPIC:</strong> <span style={{ color: '#00D4FF', fontWeight: 'bold' }}>{topic}</span>
           </p>
@@ -124,7 +104,7 @@ export function DownloadReportButton({
 
         {/* JUDGE VERDICT & SCORE BREAKDOWN */}
         {scores && (
-          <div style={{ marginBottom: '40px' }}>
+          <div style={{ marginBottom: '40px', pageBreakInside: 'avoid' }}>
             <h2 style={{ fontSize: '18px', fontWeight: 'bold', borderBottom: '1px solid #1E293B', paddingBottom: '8px', marginBottom: '15px', color: '#FFFFFF' }}>
               JUDGE VERDICT & SCORE BREAKDOWN
             </h2>
@@ -176,34 +156,34 @@ export function DownloadReportButton({
             FULL DEBATE TRANSCRIPT
           </h2>
           
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
-            <thead>
-              <tr style={{ backgroundColor: '#0F172A', borderTop: '2px solid #1E293B', borderBottom: '2px solid #1E293B' }}>
-                <th style={{ padding: '12px', textAlign: 'left', width: '20%', borderRight: '1px solid #1E293B', color: '#94A3B8' }}>Speaker</th>
-                <th style={{ padding: '12px', textAlign: 'left', width: '80%', color: '#94A3B8' }}>Argument / Statement</th>
-              </tr>
-            </thead>
-            <tbody>
-              {messages.map((m, i) => {
-                const isPro = m.speaker === 'proponent';
-                const isOpp = m.speaker === 'opponent';
-                const label = isPro ? 'PROPONENT' : (isOpp ? 'OPPONENT' : 'JUDGE');
-                const accentColor = isPro ? '#00D4FF' : (isOpp ? '#FF2D55' : '#94A3B8');
-                const hasPenalty = m.text.includes('SYSTEM NOTE: PENALTY APPLIED');
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {messages.map((m, i) => {
+              const isPro = m.speaker === 'proponent';
+              const isOpp = m.speaker === 'opponent';
+              const label = isPro ? 'PROPONENT' : (isOpp ? 'OPPONENT' : 'JUDGE');
+              const accentColor = isPro ? '#00D4FF' : (isOpp ? '#FF2D55' : '#94A3B8');
+              const hasPenalty = m.text.includes('SYSTEM NOTE: PENALTY APPLIED');
 
-                return (
-                  <tr key={i} style={{ borderBottom: '1px solid #1E293B', backgroundColor: hasPenalty ? '#2A131A' : (i % 2 === 0 ? '#0B1121' : '#131C31') }}>
-                    <td style={{ padding: '15px 12px', verticalAlign: 'top', borderRight: '1px solid #1E293B', fontWeight: '900', color: accentColor }}>
-                      [R{m.round}]<br/>{label}
-                    </td>
-                    <td style={{ padding: '15px 12px', verticalAlign: 'top', whiteSpace: 'pre-wrap', lineHeight: '1.6', textAlign: 'justify', color: '#E2E8F0' }}>
-                      {m.text}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+              return (
+                <div key={i} style={{ 
+                  pageBreakInside: 'avoid', // 🔥 THIS PREVENTS THE BOX FROM CUTTING IN HALF 🔥
+                  backgroundColor: hasPenalty ? '#2A131A' : (i % 2 === 0 ? '#0B1121' : '#131C31'),
+                  borderLeft: `4px solid ${hasPenalty ? '#FF2D55' : accentColor}`,
+                  border: `1px solid ${hasPenalty ? '#4c0519' : '#1E293B'}`,
+                  borderLeftWidth: '4px',
+                  padding: '20px',
+                  borderRadius: '8px'
+                }}>
+                  <div style={{ color: accentColor, fontWeight: '900', fontSize: '13px', marginBottom: '10px', letterSpacing: '1px' }}>
+                    [ROUND {m.round}] {label}
+                  </div>
+                  <div style={{ color: '#E2E8F0', fontSize: '14px', lineHeight: '1.6', whiteSpace: 'pre-wrap', textAlign: 'justify' }}>
+                    {m.text}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
     </>
