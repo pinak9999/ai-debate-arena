@@ -26,8 +26,8 @@ export function DownloadReportButton({
     setIsGenerating(true);
 
     try {
-      // 🔥 Naya aur advance PDF engine jo page breaks samajhta hai
-      const html2pdf = (await import('html2pdf.js')).default;
+      // 🔥 THE FIX: 'as any' लगाकर TypeScript का एरर बाईपास कर दिया
+      const html2pdf = (await import('html2pdf.js')).default as any;
 
       const element = hiddenReportRef.current;
       element.style.display = 'block';
@@ -35,12 +35,12 @@ export function DownloadReportButton({
       const safeTopic = (topic || 'debate').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
 
       const opt = {
-        margin:       [30, 0, 30, 0], // Top aur Bottom margin taaki edge par text na touch ho
+        margin:       [30, 0, 30, 0], // टॉप और बॉटम मार्जिन
         filename:     `Debate-Report_${safeTopic}.pdf`,
         image:        { type: 'jpeg', quality: 1 },
         html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#0B1121' },
         jsPDF:        { unit: 'pt', format: 'a4', orientation: 'portrait' },
-        pagebreak:    { mode: ['css', 'legacy'] } // 🔥 THE MAGIC FIX: Responds to CSS page breaks
+        pagebreak:    { mode: ['css', 'legacy'] } // CSS पेज ब्रेक
       };
 
       await html2pdf().set(opt).from(element).save();
@@ -49,7 +49,7 @@ export function DownloadReportButton({
 
     } catch (error) {
       console.error("PDF Generation Error:", error);
-      alert("PDF generate karne mein problem aayi. Please try again.");
+      alert("PDF generate करने में प्रॉब्लम आयी. Please try again.");
       if (hiddenReportRef.current) hiddenReportRef.current.style.display = 'none';
     } finally {
       setIsGenerating(false);
