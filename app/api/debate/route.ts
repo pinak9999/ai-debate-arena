@@ -1,13 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
-import { createGroq } from '@ai-sdk/groq';
+import { google } from '@ai-sdk/google';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
-// 🔥 FIX: अगर API Key नहीं है, तो तुरंत क्रैश होने से बचाने के लिए || '' लगाया है
-const groq = createGroq({
-  apiKey: process.env.GROQ_API_KEY || '', 
-});
 
 // ─── UTILITY FUNCTIONS ───
 
@@ -57,7 +53,7 @@ function toManualTextStream(text: string): Response {
 async function generateSearchQuery(text: string): Promise<string> {
   try {
     const { text: query } = await generateText({
-      model: groq('groq/compound'), // 🔥 Typo Fixed: 'compounde' से 'compound' कर दिया
+      model: google('gemini-3.5-flash-lite'), // 🔥 BEST FAST MODEL APPLIED
       prompt: `You are an expert Google Search query generator. Extract a highly specific 3 to 5 word search query to fact-check the following statement. \nStatement: "${text.slice(0, 300)}"\nCRITICAL: Output ONLY the search keywords. Do NOT use quotes, do NOT explain, do NOT write "Search query:". Just the words.`,
       temperature: 0.1,
     });
@@ -226,8 +222,8 @@ function clampScore(n: unknown, fallback: number, min = 10, max = 100): number {
 
 export async function POST(req: NextRequest) {
   try {
-    if (!process.env.GROQ_API_KEY) {
-      return NextResponse.json({ error: 'ASLI ERROR: GROQ_API_KEY Environment Variable is missing!' }, { status: 500 });
+    if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
+      return NextResponse.json({ error: 'ASLI ERROR: GOOGLE_GENERATIVE_AI_API_KEY Environment Variable is missing!' }, { status: 500 });
     }
 
     let body;
@@ -514,7 +510,7 @@ Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) 
       ];
 
       const { text: rawOutput } = await generateText({
-        model: groq('groq/compound'),
+        model: google('gemini-3.5-flash-lite'), // 🔥 BEST FAST MODEL APPLIED
         temperature: 0.7,
         system: systemPrompt,
         messages: finalMessages as any,
@@ -561,7 +557,7 @@ Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) 
         : '';
       const critiquePrompt = `Analyze the latest debate turn.${biasNote} Provide a strict 1-sentence feedback, written STRICTLY in ${language.toUpperCase()} Native Script, under 25 words.\nTranscript:\n${history.map((msg: { speaker: string; text: string; round: number }) => `[Round ${msg.round}] ${msg.speaker}: ${msg.text}`).join('\n\n')}`;
       const { text } = await generateText({
-        model: groq('groq/compound'),
+        model: google('gemini-3.5-flash-lite'), // 🔥 BEST FAST MODEL APPLIED
         temperature: 0.4,
         prompt: critiquePrompt
       });
@@ -634,7 +630,7 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap the JSON in markdown blocks
 }`;
 
       const { text } = await generateText({
-        model: groq('groq/compound'),
+        model: google('gemini-3.5-flash-lite'), // 🔥 BEST FAST MODEL APPLIED
         temperature: 0.1,
         prompt: judgePrompt
       });
@@ -739,7 +735,7 @@ CRITICAL RULES:
 Respond STRICTLY with JSON ONLY. Do NOT wrap in \`\`\`json: {"pro": <number>, "opp": <number>}`;
 
       const { text } = await generateText({
-        model: groq('groq/compound'),
+        model: google('gemini-3.5-flash-lite'), // 🔥 BEST FAST MODEL APPLIED
         temperature: 0.1,
         prompt
       });
@@ -782,7 +778,7 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap in \`\`\`json.
 {"hasFallacy": true/false, "fallacyName": "English Name or null", "explanation": "Explanation strictly in ${language}", "penalty": 0, "aggressionScore": 50, "logicScore": 80}`;
 
       const { text: result } = await generateText({
-        model: groq('groq/compound'),
+        model: google('gemini-3.5-flash-lite'), // 🔥 BEST FAST MODEL APPLIED
         temperature: 0.1,
         prompt
       });

@@ -1,14 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { generateText } from 'ai';
-import { createGroq } from '@ai-sdk/groq';
+import { google } from '@ai-sdk/google';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
-
-// अगर API Key नहीं है, तो खाली स्ट्रिंग पास करो ताकि ऐप तुरंत क्रैश न हो
-const groq = createGroq({
-  apiKey: process.env.GROQ_API_KEY || '',
-});
 
 // यूट्यूब URL से Video ID निकालने का फंक्शन
 function extractVideoId(url: string) {
@@ -66,11 +61,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Could not fetch transcript. Make sure the video has captions enabled.' }, { status: 400 });
     }
 
-    // 🔥 THE MASTER FIX FOR "Request Entity Too Large" 🔥
-    // 25000 कैरेक्टर्स सर्वर को क्रैश कर रहे थे। 10000 कैरेक्टर्स एकदम सेफ हैं और समरी के लिए काफी हैं।
-    const limitedText = fullText.slice(0, 10000); 
+    // 🔥 THE MASTER UPGRADE: 
+    // चूँकि 'groq/compound' की 70K लिमिट है, हम इसे 25,000 लेटर्स (आधी वीडियो) दे सकते हैं 
+    // ताकि लंबी वीडियो की समरी भी एकदम सटीक बने!
+    const limitedText = fullText.slice(0, 25000); 
 
-    // 2. Groq AI से वीडियो की समरी और मेन दावे (Claims) निकलवाओ
+    // 2. AI से वीडियो की समरी और मेन दावे (Claims) निकलवाओ
     const prompt = `You are an expert content analyzer. Read this transcript of a YouTube video and extract the core topic and the top 3 claims/arguments made by the creator.
 
 Transcript:
@@ -86,7 +82,7 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
     
     try {
       const { text: aiResponse } = await generateText({
-        model: groq('groq/compound'), // 🔥 70K TPM वाला सबसे सेफ मॉडल
+        model: google('gemini-3.5-flash-lite'), // 🔥 BEST FAST MODEL APPLIED
         temperature: 0.1,
         prompt
       });
@@ -108,7 +104,7 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
       // 🔥 FALLBACK: अगर AI क्रैश हुआ, तो भी ऐप चलती रहेगी
       result = {
         topic: "YouTube Video Analysis",
-        claims: limitedText.slice(0, 300) + "... [Full context sent to backend for debate]"
+        claims: limitedText.slice(0, 400) + "... [Full transcript sent to backend for debate]"
       };
     }
 
