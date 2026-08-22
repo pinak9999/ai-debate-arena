@@ -31,38 +31,36 @@ export function DownloadReportButton({
 
       const element = hiddenReportRef.current;
       
-      // Setup for capture without disturbing the screen
+      // Make element temporarily visible for capture
       element.style.display = 'block';
-      element.style.position = 'absolute';
-      element.style.left = '-9999px';
-      element.style.top = '0';
 
       const canvas = await html2canvas(element, {
         scale: 2, 
         useCORS: true,
         logging: false,
-        backgroundColor: '#0B1121', // Dark theme background
+        backgroundColor: '#0B1121', // Dark Theme
       });
 
       element.style.display = 'none';
-      element.style.position = 'static';
 
       const imgData = canvas.toDataURL('image/png');
       const pdf = new jsPDF('p', 'pt', 'a4');
       
       const pdfWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
+      
+      // Calculate full image height based on PDF width
       const imgHeight = (canvas.height * pdfWidth) / canvas.width;
       
       let heightLeft = imgHeight;
       let position = 0;
 
-      // 🔥 MULTI-PAGE FIX: Automatically splits long debates into multiple pages
+      // 🔥 MULTI-PAGE FIX: Handles long debates properly by splitting them across A4 pages
       pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
       heightLeft -= pageHeight;
 
       while (heightLeft > 0) {
-        position -= pageHeight;
+        position -= pageHeight; 
         pdf.addPage();
         pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
         heightLeft -= pageHeight;
@@ -101,7 +99,7 @@ export function DownloadReportButton({
         disabled={disabled || isGenerating}
         className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold tracking-wide inline-flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)]"
       >
-        {isGenerating ? '⏳ Generating Premium PDF...' : '📄 Export Premium PDF Report'}
+        {isGenerating ? '⏳ Generating...' : '📄 Export Premium PDF Report'}
       </button>
 
       {/* ─── HIDDEN ULTRA-PREMIUM HTML REPORT ─── */}
@@ -111,8 +109,9 @@ export function DownloadReportButton({
           display: 'none', 
           width: '850px', 
           padding: '50px', 
-          backgroundColor: '#0B1121', // Deep Dark Blue
-          color: '#F1F5F9', // Light Slate Text
+          backgroundColor: '#0B1121', 
+          color: '#F1F5F9', 
+          // 🔥 FONT FIX: Ensures regional languages like Gujarati, Hindi, etc., print perfectly
           fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' 
         }}
       >
@@ -135,7 +134,7 @@ export function DownloadReportButton({
           </p>
         </div>
 
-        {/* SCORE BREAKDOWN (Modern Flex Layout instead of boring table) */}
+        {/* SCORE BREAKDOWN */}
         {scores && (
           <div style={{ marginBottom: '50px' }}>
             <h2 style={{ fontSize: '20px', color: '#FFFFFF', paddingBottom: '15px', marginBottom: '20px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>
@@ -184,7 +183,7 @@ export function DownloadReportButton({
           </div>
         )}
 
-        {/* TRANSCRIPT (Modern Chat/Cards style) */}
+        {/* TRANSCRIPT */}
         <div>
           <h2 style={{ fontSize: '20px', color: '#FFFFFF', paddingBottom: '15px', marginBottom: '25px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid #1E293B' }}>
             Full Debate Transcript
