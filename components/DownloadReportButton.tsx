@@ -26,37 +26,47 @@ export function DownloadReportButton({
     setIsGenerating(true);
 
     try {
-      // Dynamic imports for performance (avoids SSR issues in Next.js)
       const html2canvas = (await import('html2canvas')).default;
       const { jsPDF } = await import('jspdf');
 
       const element = hiddenReportRef.current;
       
-      // Make it temporarily visible for capture
+      // Setup for capture without disturbing the screen
       element.style.display = 'block';
+      element.style.position = 'absolute';
+      element.style.left = '-9999px';
+      element.style.top = '0';
 
-      // Capture the HTML element as a high-res image
       const canvas = await html2canvas(element, {
-        scale: 2, // High resolution for better text clarity
+        scale: 2, 
         useCORS: true,
         logging: false,
-        backgroundColor: '#ffffff',
+        backgroundColor: '#0B1121', // Dark theme background
       });
 
-      // Hide it back
       element.style.display = 'none';
+      element.style.position = 'static';
 
       const imgData = canvas.toDataURL('image/png');
-      const pdf = new jsPDF({
-        orientation: 'portrait',
-        unit: 'pt',
-        format: 'a4',
-      });
-
+      const pdf = new jsPDF('p', 'pt', 'a4');
+      
       const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
+      const pageHeight = pdf.internal.pageSize.getHeight();
+      const imgHeight = (canvas.height * pdfWidth) / canvas.width;
+      
+      let heightLeft = imgHeight;
+      let position = 0;
 
-      pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+      // 🔥 MULTI-PAGE FIX: Automatically splits long debates into multiple pages
+      pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft > 0) {
+        position -= pageHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, pdfWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
       
       const safeTopic = (topic || 'debate').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
       pdf.save(`Debate-Report_${safeTopic}.pdf`);
@@ -91,158 +101,124 @@ export function DownloadReportButton({
         disabled={disabled || isGenerating}
         className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold tracking-wide inline-flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)]"
       >
-        {isGenerating ? '⏳ Generating...' : '📄 Export Premium PDF Report'}
+        {isGenerating ? '⏳ Generating Premium PDF...' : '📄 Export Premium PDF Report'}
       </button>
 
-      {/* ─── HIDDEN HTML REPORT FOR PDF CAPTURE ─── */}
-      {/* 🔥 MASTER TWEAK: The system font stack perfectly supports ALL Indian regional languages automatically */}
+      {/* ─── HIDDEN ULTRA-PREMIUM HTML REPORT ─── */}
       <div 
         ref={hiddenReportRef} 
         style={{ 
           display: 'none', 
-          width: '800px', 
-          padding: '0px', 
-          backgroundColor: 'white', 
-          color: 'black', 
+          width: '850px', 
+          padding: '50px', 
+          backgroundColor: '#0B1121', // Deep Dark Blue
+          color: '#F1F5F9', // Light Slate Text
           fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' 
         }}
       >
         {/* HEADER */}
-        <div style={{ backgroundColor: '#0f172a', padding: '40px', color: 'white' }}>
-          <h1 style={{ fontSize: '28px', fontWeight: 'bold', margin: '0 0 10px 0' }}>AI DEBATE ARENA</h1>
-          <p style={{ fontSize: '14px', color: '#cbd5e1', margin: 0 }}>FINANCIAL WAR-ROOM | OFFICIAL EVALUATION REPORT</p>
+        <div style={{ borderBottom: '1px solid #1E293B', paddingBottom: '25px', marginBottom: '35px' }}>
+          <h1 style={{ fontSize: '32px', fontWeight: '900', margin: '0 0 10px 0', letterSpacing: '2px', color: '#FFFFFF' }}>
+            AI DEBATE ARENA
+          </h1>
+          <p style={{ fontSize: '14px', color: '#94A3B8', margin: 0, letterSpacing: '1px', textTransform: 'uppercase' }}>
+            Financial War-Room | Official Evaluation Report
+          </p>
         </div>
 
-        <div style={{ padding: '40px' }}>
-          {/* META DATA */}
-          <div style={{ marginBottom: '40px' }}>
-            <p style={{ fontSize: '16px', fontWeight: 'bold', marginBottom: '8px', color: '#0f172a' }}>DEBATE TOPIC:</p>
-            <p style={{ fontSize: '18px', color: '#333', fontWeight: '500' }}>{topic}</p>
-            <p style={{ fontSize: '12px', color: '#64748b', marginTop: '15px' }}>
-              GENERATED ON: {new Date().toLocaleString('en-IN')}
-            </p>
-          </div>
+        {/* META DATA */}
+        <div style={{ marginBottom: '40px', backgroundColor: '#131C31', padding: '20px', borderRadius: '12px', borderLeft: '4px solid #3B82F6' }}>
+          <p style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '8px', color: '#94A3B8' }}>DEBATE TOPIC:</p>
+          <p style={{ fontSize: '20px', color: '#FFFFFF', fontWeight: 'bold', margin: '0 0 15px 0' }}>{topic}</p>
+          <p style={{ fontSize: '13px', color: '#64748b', margin: 0 }}>
+            GENERATED ON: {new Date().toLocaleString('en-IN')}
+          </p>
+        </div>
 
-          {/* JUDGE VERDICT */}
-          {scores && (
-            <div style={{ marginBottom: '40px' }}>
-              <h2 style={{ fontSize: '22px', color: '#0f172a', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginBottom: '20px', fontWeight: 'bold' }}>
-                JUDGE VERDICT & SCORE BREAKDOWN
-              </h2>
-              
-              <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '20px' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#0f172a', color: 'white', textAlign: 'left' }}>
-                    <th style={{ padding: '12px', border: '1px solid #cbd5e1' }}>Metric</th>
-                    <th style={{ padding: '12px', border: '1px solid #cbd5e1', textAlign: 'center', color: '#00d4ff' }}>Proponent (BULL)</th>
-                    <th style={{ padding: '12px', border: '1px solid #cbd5e1', textAlign: 'center', color: '#ff2d55' }}>Opponent (BEAR)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {[
-                    { label: 'Logic & Reasoning', pro: scores.proponent.logic, opp: scores.opponent.logic },
-                    { label: 'Evidence Quality', pro: scores.proponent.evidence, opp: scores.opponent.evidence },
-                    { label: 'Persuasion & Delivery', pro: scores.proponent.persuasion, opp: scores.opponent.persuasion },
-                    { label: 'Creativity', pro: scores.proponent.creativity, opp: scores.opponent.creativity },
-                  ].map((row, i) => (
-                    <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#f8fafc' : 'white' }}>
-                      <td style={{ padding: '12px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: '#334155' }}>{row.label}</td>
-                      <td style={{ padding: '12px', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', color: '#0284c7' }}>{row.pro}</td>
-                      <td style={{ padding: '12px', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', color: '#e11d48' }}>{row.opp}</td>
-                    </tr>
-                  ))}
-                  <tr style={{ backgroundColor: '#f1f5f9' }}>
-                    <td style={{ padding: '12px', border: '1px solid #cbd5e1', fontWeight: 'bold', fontSize: '16px', color: '#0f172a' }}>OVERALL SCORE</td>
-                    <td style={{ padding: '12px', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', fontSize: '16px', color: '#0284c7' }}>{scores.proponent.overall}</td>
-                    <td style={{ padding: '12px', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', fontSize: '16px', color: '#e11d48' }}>{scores.opponent.overall}</td>
-                  </tr>
-                </tbody>
-              </table>
+        {/* SCORE BREAKDOWN (Modern Flex Layout instead of boring table) */}
+        {scores && (
+          <div style={{ marginBottom: '50px' }}>
+            <h2 style={{ fontSize: '20px', color: '#FFFFFF', paddingBottom: '15px', marginBottom: '20px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px' }}>
+              Judge Verdict & Score Breakdown
+            </h2>
+            
+            <div style={{ display: 'flex', gap: '20px', marginBottom: '25px' }}>
+              {/* Proponent Card */}
+              <div style={{ flex: 1, backgroundColor: '#131C31', padding: '25px', borderRadius: '16px', borderTop: '5px solid #00D4FF', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+                <h3 style={{ color: '#00D4FF', margin: '0 0 20px 0', fontSize: '18px', fontWeight: '800' }}>PROPONENT (BULL)</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', borderBottom: '1px solid #1E293B', paddingBottom: '10px' }}><span>Logic:</span> <strong>{scores.proponent.logic}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', borderBottom: '1px solid #1E293B', paddingBottom: '10px' }}><span>Evidence:</span> <strong>{scores.proponent.evidence}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', borderBottom: '1px solid #1E293B', paddingBottom: '10px' }}><span>Persuasion:</span> <strong>{scores.proponent.persuasion}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}><span>Creativity:</span> <strong>{scores.proponent.creativity}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0B1121', padding: '15px', borderRadius: '8px' }}>
+                  <span style={{ color: '#00D4FF', fontWeight: 'bold' }}>OVERALL</span> 
+                  <strong style={{ fontSize: '28px', color: '#00D4FF' }}>{scores.proponent.overall}</strong>
+                </div>
+              </div>
 
-              <div style={{ marginBottom: '20px', fontSize: '18px' }}>
-                <strong style={{ color: '#0f172a' }}>FINAL WINNER: </strong>
-                <span style={{ 
-                  color: isProWinner ? '#0284c7' : (isOppWinner ? '#e11d48' : '#64748b'),
-                  fontWeight: 'bold'
-                }}>
+              {/* Opponent Card */}
+              <div style={{ flex: 1, backgroundColor: '#131C31', padding: '25px', borderRadius: '16px', borderTop: '5px solid #FF2D55', boxShadow: '0 10px 25px rgba(0,0,0,0.2)' }}>
+                <h3 style={{ color: '#FF2D55', margin: '0 0 20px 0', fontSize: '18px', fontWeight: '800' }}>OPPONENT (BEAR)</h3>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', borderBottom: '1px solid #1E293B', paddingBottom: '10px' }}><span>Logic:</span> <strong>{scores.opponent.logic}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', borderBottom: '1px solid #1E293B', paddingBottom: '10px' }}><span>Evidence:</span> <strong>{scores.opponent.evidence}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px', borderBottom: '1px solid #1E293B', paddingBottom: '10px' }}><span>Persuasion:</span> <strong>{scores.opponent.persuasion}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '20px' }}><span>Creativity:</span> <strong>{scores.opponent.creativity}</strong></div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#0B1121', padding: '15px', borderRadius: '8px' }}>
+                  <span style={{ color: '#FF2D55', fontWeight: 'bold' }}>OVERALL</span> 
+                  <strong style={{ fontSize: '28px', color: '#FF2D55' }}>{scores.opponent.overall}</strong>
+                </div>
+              </div>
+            </div>
+
+            <div style={{ backgroundColor: '#131C31', padding: '20px', borderRadius: '12px' }}>
+              <div style={{ marginBottom: '15px', fontSize: '18px' }}>
+                <strong style={{ color: '#94A3B8' }}>FINAL WINNER: </strong>
+                <span style={{ color: isProWinner ? '#00D4FF' : (isOppWinner ? '#FF2D55' : '#CBD5E1'), fontWeight: '900', letterSpacing: '1px' }}>
                   {scores.winner.toUpperCase()}
                 </span>
               </div>
-              
-              <div style={{ backgroundColor: '#f8fafc', padding: '15px', borderRadius: '8px', borderLeft: '4px solid #0f172a', color: '#334155', lineHeight: '1.6' }}>
-                <strong style={{ color: '#0f172a' }}>Summary: </strong> {scores.summary}
+              <div style={{ color: '#CBD5E1', lineHeight: '1.7', fontSize: '15px' }}>
+                <strong style={{ color: '#FFFFFF' }}>Summary: </strong> {scores.summary}
               </div>
             </div>
-          )}
+          </div>
+        )}
 
-          {/* ROUND-BY-ROUND */}
-          {scoreHistory.length > 0 && (
-            <div style={{ marginBottom: '40px' }}>
-              <h2 style={{ fontSize: '22px', color: '#0f172a', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginBottom: '20px', fontWeight: 'bold' }}>
-                ROUND-BY-ROUND TRAJECTORY
-              </h2>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ backgroundColor: '#475569', color: 'white', textAlign: 'left' }}>
-                    <th style={{ padding: '12px', border: '1px solid #cbd5e1' }}>Round</th>
-                    <th style={{ padding: '12px', border: '1px solid #cbd5e1', textAlign: 'center', color: '#38bdf8' }}>Proponent Score</th>
-                    <th style={{ padding: '12px', border: '1px solid #cbd5e1', textAlign: 'center', color: '#fb7185' }}>Opponent Score</th>
-                    <th style={{ padding: '12px', border: '1px solid #cbd5e1' }}>Remarks / Penalties</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {scoreHistory.map((pt, i) => {
-                    const remarks = getRemarksForRound(pt.round);
-                    const hasPenalty = remarks.includes('Penalty');
-                    return (
-                      <tr key={i} style={{ backgroundColor: i % 2 === 0 ? '#f8fafc' : 'white' }}>
-                        <td style={{ padding: '12px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: '#334155' }}>Round {pt.round}</td>
-                        <td style={{ padding: '12px', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', color: '#0284c7' }}>{pt.pro}</td>
-                        <td style={{ padding: '12px', border: '1px solid #cbd5e1', textAlign: 'center', fontWeight: 'bold', color: '#e11d48' }}>{pt.opp}</td>
-                        <td style={{ padding: '12px', border: '1px solid #cbd5e1', fontStyle: 'italic', color: hasPenalty ? '#dc2626' : '#64748b', fontWeight: hasPenalty ? 'bold' : 'normal' }}>
-                          {remarks}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* TRANSCRIPT */}
+        {/* TRANSCRIPT (Modern Chat/Cards style) */}
+        <div>
+          <h2 style={{ fontSize: '20px', color: '#FFFFFF', paddingBottom: '15px', marginBottom: '25px', fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: '1px', borderBottom: '1px solid #1E293B' }}>
+            Full Debate Transcript
+          </h2>
+          
           <div>
-            <h2 style={{ fontSize: '22px', color: '#0f172a', borderBottom: '2px solid #e2e8f0', paddingBottom: '10px', marginBottom: '20px', fontWeight: 'bold' }}>
-              FULL DEBATE TRANSCRIPT
-            </h2>
-            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ backgroundColor: '#0f172a', color: 'white', textAlign: 'left' }}>
-                  <th style={{ padding: '12px', border: '1px solid #cbd5e1', width: '120px' }}>Speaker</th>
-                  <th style={{ padding: '12px', border: '1px solid #cbd5e1' }}>Argument / Statement</th>
-                </tr>
-              </thead>
-              <tbody>
-                {messages.map((m, i) => {
-                  const isPro = m.speaker === 'proponent';
-                  const isOpp = m.speaker === 'opponent';
-                  const label = isPro ? 'PROPONENT' : (isOpp ? 'OPPONENT' : 'JUDGE');
-                  const labelColor = isPro ? '#0284c7' : (isOpp ? '#e11d48' : '#64748b');
-                  const hasPenalty = m.text.includes('SYSTEM NOTE: PENALTY APPLIED');
+            {messages.map((m, i) => {
+              const isPro = m.speaker === 'proponent';
+              const isOpp = m.speaker === 'opponent';
+              const accentColor = isPro ? '#00D4FF' : (isOpp ? '#FF2D55' : '#94A3B8');
+              const label = isPro ? 'PROPONENT' : (isOpp ? 'OPPONENT' : 'JUDGE');
+              const hasPenalty = m.text.includes('SYSTEM NOTE: PENALTY APPLIED');
 
-                  return (
-                    <tr key={i} style={{ backgroundColor: hasPenalty ? '#fef2f2' : 'white' }}>
-                      <td style={{ padding: '15px 12px', border: '1px solid #cbd5e1', fontWeight: 'bold', color: labelColor, verticalAlign: 'top' }}>
-                        [R{m.round}]<br/>{label}
-                      </td>
-                      <td style={{ padding: '15px 12px', border: '1px solid #cbd5e1', fontSize: '15px', lineHeight: '1.6', whiteSpace: 'pre-wrap', color: '#1e293b' }}>
-                        {m.text}
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+              return (
+                <div key={i} style={{ 
+                  backgroundColor: hasPenalty ? '#2A131A' : '#131C31', 
+                  borderLeft: `5px solid ${hasPenalty ? '#FF2D55' : accentColor}`,
+                  padding: '25px',
+                  marginBottom: '20px',
+                  borderRadius: '0 12px 12px 0'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                    <span style={{ color: hasPenalty ? '#FF2D55' : accentColor, fontWeight: '900', fontSize: '14px', letterSpacing: '1px' }}>
+                      [ROUND {m.round}] {label}
+                    </span>
+                    {hasPenalty && <span style={{ backgroundColor: '#FF2D55', color: '#FFF', fontSize: '10px', padding: '3px 8px', borderRadius: '4px', fontWeight: 'bold' }}>PENALTY APPLIED</span>}
+                  </div>
+                  
+                  <div style={{ color: '#E2E8F0', fontSize: '16px', lineHeight: '1.8', whiteSpace: 'pre-wrap' }}>
+                    {m.text}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       </div>
