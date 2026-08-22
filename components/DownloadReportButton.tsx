@@ -1,7 +1,6 @@
 'use client';
 
 import type { DebateMessage, JudgeScores, ScorePoint } from '../hooks/useDebate';
-import { useRef, useState } from 'react';
 
 interface DownloadReportButtonProps {
   topic: string;
@@ -18,202 +17,245 @@ export function DownloadReportButton({
   scoreHistory,
   disabled,
 }: DownloadReportButtonProps) {
-  const [isGenerating, setIsGenerating] = useState(false);
-  const hiddenReportRef = useRef<HTMLDivElement>(null);
-
   const handleDownload = async () => {
-    if (!hiddenReportRef.current) return;
-    setIsGenerating(true);
+    // Dynamic imports to prevent SSR issues
+    const { jsPDF } = await import('jspdf');
+    const autoTable = (await import('jspdf-autotable')).default;
+    
+    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+    
+    // ─── THEME COLORS ───
+    const colors = {
+      primary: [15, 23, 42] as [number, number, number], // Dark Slate
+      cyan: [0, 212, 255] as [number, number, number],    // Proponent
+      red: [255, 45, 85] as [number, number, number],     // Opponent
+      gray: [100, 116, 139] as [number, number, number],  // Neutral
+    };
 
-    try {
-      const html2pdf = (await import('html2pdf.js')).default as any;
+    let y = 50;
 
-      const element = hiddenReportRef.current;
-      element.style.display = 'block';
+    // ─── HEADER SECTION ───
+    doc.setFillColor(...colors.primary);
+    doc.rect(0, 0, doc.internal.pageSize.getWidth(), 80, 'F');
+    
+    doc.setTextColor(255, 255, 255);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(22);
+    doc.text('AI DEBATE ARENA', 40, 40);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(10);
+    doc.setTextColor(200, 200, 200);
+    doc.text('FINANCIAL WAR-ROOM | OFFICIAL EVALUATION REPORT', 40, 60);
 
-      const safeTopic = (topic || 'debate').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
+    y = 110;
 
-      const opt = {
-        margin:       [40, 40, 40, 40], 
-        filename:     `Debate-Report_${safeTopic}.pdf`,
-        image:        { type: 'jpeg', quality: 1 },
-        html2canvas:  { scale: 2, useCORS: true, backgroundColor: '#0B1121' }, // 🔥 Dark Background
-        jsPDF:        { unit: 'pt', format: 'a4', orientation: 'portrait' },
-        pagebreak:    { mode: ['css', 'legacy'] } // 🔥 FIXES PAGE CUTTING FOR TABLES
+    // ─── META DATA ───
+    doc.setTextColor(0, 0, 0);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(12);
+    doc.text('DEBATE TOPIC:', 40, y);
+    
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(12);
+    const topicLines = doc.splitTextToSize(topic || 'N/A', doc.internal.pageSize.getWidth() - 150);
+    doc.text(topicLines, 140, y);
+    
+    y += topicLines.length * 15 + 10;
+    
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(10);
+    doc.setTextColor(150, 150, 150);
+    doc.text(`GENERATED ON: ${new Date().toLocaleString('en-IN')}`, 40, y);
+    y += 40;
+
+    // ─── JUDGE VERDICT TABLE ───
+    if (scores) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(...colors.primary);
+      doc.text('JUDGE VERDICT & SCORE BREAKDOWN', 40, y);
+      y += 15;
+
+      const isProWinner = scores.winner === 'proponent';
+      const isOppWinner = scores.winner === 'opponent';
+      
+      const winnerText = scores.winner.toUpperCase();
+      const winnerColor = isProWinner ? colors.cyan : (isOppWinner ? colors.red : colors.gray);
+
+      // Score Breakdown Table
+      autoTable(doc, {
+        startY: y,
+        head: [['Metric', 'Proponent (BULL)', 'Opponent (BEAR)']],
+        body: [
+          ['Logic & Reasoning', scores.proponent.logic, scores.opponent.logic],
+          ['Evidence Quality', scores.proponent.evidence, scores.opponent.evidence],
+          ['Persuasion & Delivery', scores.proponent.persuasion, scores.opponent.persuasion],
+          ['Creativity', scores.proponent.creativity, scores.opponent.creativity],
+          ['OVERALL SCORE', scores.proponent.overall, scores.opponent.overall],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: colors.primary, textColor: 255, fontStyle: 'bold' },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 150 },
+          1: { halign: 'center', textColor: colors.cyan, fontStyle: 'bold' },
+          2: { halign: 'center', textColor: colors.red, fontStyle: 'bold' }
+        },
+        alternateRowStyles: { fillColor: [248, 250, 252] },
+        margin: { left: 40, right: 40 },
+        willDrawCell: function(data) {
+          // Highlight the Overall Score row
+          if (data.row.index === 4) {
+            doc.setFillColor(241, 245, 249);
+          }
+        }
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 20;
+
+      // Winner Badge
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(12);
+      doc.setTextColor(0, 0, 0);
+      doc.text('FINAL WINNER: ', 40, y);
+      doc.setTextColor(...winnerColor);
+      doc.text(winnerText, 130, y);
+      
+      y += 20;
+
+      // Summary
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(50, 50, 50);
+      const summaryLines = doc.splitTextToSize(`Summary: ${scores.summary}`, doc.internal.pageSize.getWidth() - 80);
+      doc.text(summaryLines, 40, y);
+      y += summaryLines.length * 15 + 40;
+    }
+
+    // ─── ROUND-BY-ROUND PERFORMANCE ───
+    if (scoreHistory.length > 0) {
+      // Logic to extract penalties for remarks
+      const getRemarksForRound = (roundNum: number) => {
+        const roundMsgs = messages.filter(m => m.round === roundNum);
+        let remarks: string[] = [];
+        roundMsgs.forEach(m => {
+          const penaltyMatch = m.text.match(/\[SYSTEM NOTE: PENALTY APPLIED.*?\]/i);
+          if (penaltyMatch) {
+            remarks.push(`${m.speaker.toUpperCase()}: Penalty!`);
+          }
+        });
+        return remarks.length > 0 ? remarks.join(', ') : 'Clean Round';
       };
 
-      await html2pdf().set(opt).from(element).save();
+      const roundBody = scoreHistory.map((pt) => [
+        `Round ${pt.round}`,
+        pt.pro,
+        pt.opp,
+        getRemarksForRound(pt.round)
+      ]);
 
-      element.style.display = 'none';
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(16);
+      doc.setTextColor(...colors.primary);
+      doc.text('ROUND-BY-ROUND TRAJECTORY', 40, y);
+      y += 15;
 
-    } catch (error) {
-      console.error("PDF Generation Error:", error);
-      alert("PDF generate karne mein problem aayi. Please try again.");
-      if (hiddenReportRef.current) hiddenReportRef.current.style.display = 'none';
-    } finally {
-      setIsGenerating(false);
+      autoTable(doc, {
+        startY: y,
+        head: [['Round', 'Proponent Score', 'Opponent Score', 'Remarks / Penalties']],
+        body: roundBody,
+        theme: 'striped',
+        headStyles: { fillColor: [71, 85, 105], textColor: 255 },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 80 },
+          1: { halign: 'center', textColor: colors.cyan, fontStyle: 'bold' },
+          2: { halign: 'center', textColor: colors.red, fontStyle: 'bold' },
+          3: { fontStyle: 'italic', textColor: colors.gray }
+        },
+        willDrawCell: function(data) {
+          if (data.column.index === 3 && typeof data.cell.raw === 'string' && data.cell.raw.includes('Penalty')) {
+            doc.setTextColor(220, 38, 38); // Dark Red for penalties
+            doc.setFont('helvetica', 'bolditalic');
+          }
+        },
+        margin: { left: 40, right: 40 },
+      });
+
+      y = (doc as any).lastAutoTable.finalY + 40;
     }
-  };
 
-  const getRemarksForRound = (roundNum: number) => {
-    const roundMsgs = messages.filter(m => m.round === roundNum);
-    let remarks: string[] = [];
-    roundMsgs.forEach(m => {
-      if (m.text.includes('SYSTEM NOTE: PENALTY APPLIED')) {
-        remarks.push(`${m.speaker.toUpperCase()}: Penalty!`);
-      }
+    // ─── FULL TRANSCRIPT TABLE ───
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(16);
+    doc.setTextColor(...colors.primary);
+    doc.text('FULL DEBATE TRANSCRIPT', 40, y);
+    y += 15;
+
+    const transcriptBody = messages.map(m => {
+      const isPro = m.speaker === 'proponent';
+      const isOpp = m.speaker === 'opponent';
+      const label = isPro ? 'PROPONENT' : (isOpp ? 'OPPONENT' : 'JUDGE');
+      return [`[R${m.round}]\n${label}`, m.text];
     });
-    return remarks.length > 0 ? remarks.join(', ') : 'Clean Round';
+
+    autoTable(doc, {
+      startY: y,
+      head: [['Speaker', 'Argument / Statement']],
+      body: transcriptBody,
+      theme: 'grid',
+      headStyles: { fillColor: colors.primary, textColor: 255 },
+      columnStyles: {
+        0: { cellWidth: 90, fontStyle: 'bold', halign: 'center', valign: 'middle' },
+        1: { cellWidth: 'auto', fontSize: 10 }
+      },
+      willDrawCell: function(data) {
+        if (data.section === 'body' && data.column.index === 0) {
+          if (data.cell.raw && typeof data.cell.raw === 'string') {
+            if (data.cell.raw.includes('PROPONENT')) doc.setTextColor(...colors.cyan);
+            else if (data.cell.raw.includes('OPPONENT')) doc.setTextColor(...colors.red);
+            else doc.setTextColor(...colors.gray);
+          }
+        }
+        // Highlight penalties in transcript
+        if (data.section === 'body' && data.column.index === 1) {
+             const textStr = data.cell.raw as string;
+             if (textStr.includes('SYSTEM NOTE: PENALTY APPLIED')) {
+                 // Subtle red background tint for rows with penalties
+                 doc.setFillColor(254, 242, 242); 
+             }
+        }
+      },
+      styles: { cellPadding: 8, overflow: 'linebreak' },
+      margin: { left: 40, right: 40, bottom: 40 },
+    });
+
+    // ─── FOOTER (Page Numbers) ───
+    const pageCount = (doc as any).internal.getNumberOfPages();
+    for (let i = 1; i <= pageCount; i++) {
+      doc.setPage(i);
+      doc.setFont('helvetica', 'italic');
+      doc.setFontSize(8);
+      doc.setTextColor(150, 150, 150);
+      doc.text(
+        `Page ${i} of ${pageCount} | AI Debate Arena`,
+        doc.internal.pageSize.getWidth() / 2,
+        doc.internal.pageSize.getHeight() - 20,
+        { align: 'center' }
+      );
+    }
+
+    const safeTopic = (topic || 'debate').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
+    doc.save(`Debate-Report_${safeTopic}.pdf`);
   };
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={handleDownload}
-        disabled={disabled || isGenerating}
-        className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold tracking-wide inline-flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)]"
-      >
-        {isGenerating ? '⏳ Generating PDF...' : '📄 Export Premium PDF Report'}
-      </button>
-
-      {/* ─── HIDDEN DARK FORMAL HTML REPORT (EXACT MATCH) ─── */}
-      <div 
-        ref={hiddenReportRef} 
-        style={{ 
-          display: 'none', 
-          width: '800px', 
-          padding: '0', 
-          backgroundColor: '#0B1121', // Dark formal theme
-          color: '#F1F5F9', 
-          fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif' 
-        }}
-      >
-        {/* HEADER */}
-        <div style={{ marginBottom: '20px' }}>
-          <h1 style={{ fontSize: '24px', fontWeight: 'bold', margin: '0 0 5px 0', color: '#FFFFFF' }}>AI DEBATE ARENA</h1>
-          <p style={{ fontSize: '12px', color: '#94A3B8', margin: '0 0 15px 0' }}>FINANCIAL WAR-ROOM | OFFICIAL EVALUATION REPORT</p>
-          
-          <p style={{ fontSize: '12px', margin: '0 0 5px 0', lineHeight: '1.5', color: '#E2E8F0' }}>
-            <strong style={{ color: '#94A3B8' }}>DEBATE TOPIC:</strong> <span style={{ color: '#00D4FF' }}>{topic}</span>
-          </p>
-          <p style={{ fontSize: '12px', margin: '0 0 20px 0', color: '#E2E8F0' }}>
-            <strong style={{ color: '#94A3B8' }}>GENERATED ON:</strong> {new Date().toLocaleString('en-IN')}
-          </p>
-        </div>
-
-        {/* SCORE BREAKDOWN */}
-        {scores && (
-          <div style={{ marginBottom: '20px', pageBreakInside: 'avoid' }}>
-            <h2 style={{ fontSize: '14px', fontWeight: 'bold', borderBottom: '1px solid #1E293B', paddingBottom: '4px', marginBottom: '10px', textTransform: 'uppercase', color: '#FFFFFF' }}>
-              JUDGE VERDICT & SCORE BREAKDOWN
-            </h2>
-            
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px', marginBottom: '15px' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #1E293B' }}>
-                  <th style={{ padding: '8px 4px', textAlign: 'left', color: '#94A3B8' }}>Metric</th>
-                  <th style={{ padding: '8px 4px', textAlign: 'center', color: '#00D4FF' }}>Proponent (BULL)</th>
-                  <th style={{ padding: '8px 4px', textAlign: 'center', color: '#FF2D55' }}>Opponent (BEAR)</th>
-                </tr>
-              </thead>
-              <tbody>
-                {[
-                  { label: 'Logic & Reasoning', pro: scores.proponent.logic, opp: scores.opponent.logic },
-                  { label: 'Evidence Quality', pro: scores.proponent.evidence, opp: scores.opponent.evidence },
-                  { label: 'Persuasion & Delivery', pro: scores.proponent.persuasion, opp: scores.opponent.persuasion },
-                  { label: 'Creativity', pro: scores.proponent.creativity, opp: scores.opponent.creativity },
-                ].map((row, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #1E293B' }}>
-                    <td style={{ padding: '8px 4px', color: '#E2E8F0' }}>{row.label}</td>
-                    <td style={{ padding: '8px 4px', textAlign: 'center', color: '#00D4FF' }}>{row.pro}</td>
-                    <td style={{ padding: '8px 4px', textAlign: 'center', color: '#FF2D55' }}>{row.opp}</td>
-                  </tr>
-                ))}
-                <tr style={{ borderTop: '1px solid #334155', fontWeight: 'bold' }}>
-                  <td style={{ padding: '8px 4px', color: '#FFFFFF' }}>OVERALL SCORE</td>
-                  <td style={{ padding: '8px 4px', textAlign: 'center', color: '#00D4FF' }}>{scores.proponent.overall}</td>
-                  <td style={{ padding: '8px 4px', textAlign: 'center', color: '#FF2D55' }}>{scores.opponent.overall}</td>
-                </tr>
-              </tbody>
-            </table>
-
-            <div style={{ fontSize: '13px', marginBottom: '8px', color: '#E2E8F0' }}>
-              <strong style={{ color: '#94A3B8' }}>FINAL WINNER: </strong> 
-              <span style={{ color: scores.winner === 'proponent' ? '#00D4FF' : (scores.winner === 'opponent' ? '#FF2D55' : '#CBD5E1') }}>
-                {scores.winner.toUpperCase()}
-              </span>
-            </div>
-            <div style={{ fontSize: '12px', lineHeight: '1.5', textAlign: 'justify', color: '#CBD5E1' }}>
-              <strong style={{ color: '#FFFFFF' }}>Summary: </strong> {scores.summary}
-            </div>
-          </div>
-        )}
-
-        {/* ROUND-BY-ROUND */}
-        {scoreHistory.length > 0 && (
-          <div style={{ marginBottom: '20px', pageBreakInside: 'avoid' }}>
-            <h2 style={{ fontSize: '14px', fontWeight: 'bold', borderBottom: '1px solid #1E293B', paddingBottom: '4px', marginBottom: '10px', textTransform: 'uppercase', color: '#FFFFFF' }}>
-              ROUND-BY-ROUND TRAJECTORY
-            </h2>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-              <thead>
-                <tr style={{ borderBottom: '1px solid #1E293B' }}>
-                  <th style={{ padding: '8px 4px', textAlign: 'left', color: '#94A3B8' }}>Round</th>
-                  <th style={{ padding: '8px 4px', textAlign: 'center', color: '#00D4FF' }}>Proponent Score</th>
-                  <th style={{ padding: '8px 4px', textAlign: 'center', color: '#FF2D55' }}>Opponent Score</th>
-                  <th style={{ padding: '8px 4px', textAlign: 'left', color: '#94A3B8' }}>Remarks/Penalties</th>
-                </tr>
-              </thead>
-              <tbody>
-                {scoreHistory.map((pt, i) => (
-                  <tr key={i} style={{ borderBottom: '1px solid #1E293B' }}>
-                    <td style={{ padding: '8px 4px', color: '#E2E8F0' }}>Round {pt.round}</td>
-                    <td style={{ padding: '8px 4px', textAlign: 'center', color: '#00D4FF' }}>{pt.pro}</td>
-                    <td style={{ padding: '8px 4px', textAlign: 'center', color: '#FF2D55' }}>{pt.opp}</td>
-                    <td style={{ padding: '8px 4px', color: '#94A3B8' }}>{getRemarksForRound(pt.round)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        {/* TRANSCRIPT */}
-        <div>
-          <h2 style={{ fontSize: '14px', fontWeight: 'bold', borderBottom: '1px solid #1E293B', paddingBottom: '4px', marginBottom: '10px', textTransform: 'uppercase', color: '#FFFFFF' }}>
-            FULL DEBATE TRANSCRIPT
-          </h2>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid #1E293B' }}>
-                <th style={{ padding: '8px 4px', textAlign: 'left', width: '20%', color: '#94A3B8' }}>Speaker</th>
-                <th style={{ padding: '8px 4px', textAlign: 'left', width: '80%', color: '#94A3B8' }}>Argument / Statement</th>
-              </tr>
-            </thead>
-            <tbody>
-              {messages.map((m, i) => {
-                const isPro = m.speaker === 'proponent';
-                const isOpp = m.speaker === 'opponent';
-                const label = isPro ? 'PROPONENT' : (isOpp ? 'OPPONENT' : 'JUDGE');
-                const accentColor = isPro ? '#00D4FF' : (isOpp ? '#FF2D55' : '#94A3B8');
-                const hasPenalty = m.text.includes('SYSTEM NOTE: PENALTY APPLIED');
-
-                return (
-                  <tr key={i} style={{ borderBottom: '1px solid #1E293B', pageBreakInside: 'avoid', backgroundColor: hasPenalty ? '#2A131A' : 'transparent' }}>
-                    <td style={{ padding: '12px 4px', verticalAlign: 'top', fontWeight: 'bold', color: accentColor }}>
-                      [R{m.round}]<br/>{label}
-                    </td>
-                    <td style={{ padding: '12px 4px', verticalAlign: 'top', whiteSpace: 'pre-wrap', lineHeight: '1.5', textAlign: 'justify', color: '#E2E8F0' }}>
-                      {m.text}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </>
+    <button
+      type="button"
+      onClick={handleDownload}
+      disabled={disabled}
+      className="px-5 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-bold tracking-wide inline-flex items-center gap-2 transition-all shadow-[0_0_15px_rgba(37,99,235,0.4)]"
+    >
+      📄 Export Premium PDF Report
+    </button>
   );
 }
