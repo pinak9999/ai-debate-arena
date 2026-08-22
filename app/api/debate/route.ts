@@ -13,7 +13,8 @@ const groq = createGroq({
 
 function safeJsonParse<T>(raw: string, fallback: T): T {
   try {
-    let clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    
+let clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
     const startIndex = clean.indexOf('{');
     const endIndex = clean.lastIndexOf('}');
     if (startIndex !== -1 && endIndex !== -1) {
@@ -235,9 +236,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ASLI ERROR: Invalid or empty JSON body received from frontend.' }, { status: 400 });
     }
 
-    // YouTube का टेक्स्ट अगर 7000 कैरेक्टर्स से बड़ा है, तो उसे यहाँ काट दो।
-    if (body.topic && typeof body.topic === 'string' && body.topic.length > 7000) {
-      body.topic = body.topic.slice(0, 7000) + "... [CONTEXT TRUNCATED TO SAVE TPM LIMIT]";
+    // 🔥 THE MASTER FIX 2.0 FOR "Request Entity Too Large" 🔥
+    // Proxy servers block payloads larger than ~1MB.
+    // 1500 chars (approx 300 words) is absolutely enough for the AI to debate properly.
+    if (body.topic && typeof body.topic === 'string' && body.topic.length > 1500) {
+      body.topic = body.topic.slice(0, 1500) + "... [CONTENT TRUNCATED FOR API LIMITS]";
+    }
+
+    if (body.documentText && typeof body.documentText === 'string' && body.documentText.length > 1500) {
+      body.documentText = body.documentText.slice(0, 1500) + "... [CONTENT TRUNCATED FOR API LIMITS]";
     }
 
     if (body.type === 'stock_data') {
@@ -309,7 +316,13 @@ export async function POST(req: NextRequest) {
       const isDocumentMode = mode === 'document';
       const position = speaker === 'proponent' ? 'SUPPORTING' : 'OPPOSING';
 
-      const messages = history.map((msg: { speaker: string; text: string }) => ({
+      // Keep only recent 6 messages to avoid blowing up payload sizes in late rounds
+      let recentHistory = history;
+      if (history.length > 6) {
+        recentHistory = history.slice(-6);
+      }
+
+      const messages = recentHistory.map((msg: { speaker: string; text: string }) => ({
         role: msg.speaker === speaker ? 'assistant' : 'user',
         content: msg.text,
       }));
@@ -318,7 +331,7 @@ export async function POST(req: NextRequest) {
       if (isDocumentMode) {
         const documentText = body.documentText || '';
         groundingBlock = documentText 
-          ? `UPLOADED DOCUMENT / CODE CONTEXT:\n"""\n${documentText.slice(0, 7000)}\n"""\nCRITICAL: Use exact line numbers, variable names, or specific quotes from this document in your argument.`
+          ? `UPLOADED DOCUMENT / CODE CONTEXT:\n"""\n${documentText}\n"""\nCRITICAL: Use exact line numbers, variable names, or specific quotes from this document in your argument.`
           : `No document provided. Argue based on general software engineering or business principles.`;
       } else if (isStockMode) {
         groundingBlock = stockContext
