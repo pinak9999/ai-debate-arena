@@ -9,6 +9,8 @@ import JudgeVerdict from '@/components/JudgeVerdict';
 import ParticleBackground from '@/components/ParticleBackground';
 import Sidebar from '@/components/Sidebar';
 import { useDebate, DebateLanguage } from '@/hooks/useDebate'; 
+import { DebateGraph } from '@/components/DebateGraph'; // तेरा पुराना स्कोर ग्राफ
+import { ArgumentDAG } from '@/components/ArgumentDAG'; // अपना नया लॉजिक ट्री
 
 export default function Home() {
   const debate = useDebate();
@@ -69,19 +71,16 @@ export default function Home() {
   };
 
   const handleSelectDebate = (item: any) => {
-    savedDebateRef.current = true; // डुप्लीकेट सेव होने से रोकेगा
+    savedDebateRef.current = true; 
     debate.loadPastDebate(item);
     setIsSidebarOpen(false); 
   };
 
-  // 🔥 साइडबार से डिबेट डिलीट करने का नया फंक्शन
   const handleDeleteDebate = async (id: string, e: React.MouseEvent) => {
-    e.stopPropagation(); // क्लिक करने पर डिबेट लोड न हो, सिर्फ डिलीट हो
+    e.stopPropagation(); 
     
-    // UI से तुरंत हटा दो (ताकि तुम्हें तुरंत रिज़ल्ट दिखे)
     setHistoryList(prev => prev.filter(item => item._id !== id && item.id !== id));
     
-    // बैकग्राउंड में MongoDB से डिलीट कर दो
     try {
       await fetch(`/api/debate-history?id=${id}`, { method: 'DELETE' });
     } catch (err) {
@@ -102,11 +101,11 @@ export default function Home() {
         historyList={historyList} 
         onSelectDebate={handleSelectDebate} 
         onNewDebate={handleNewDebate}
-        onDeleteDebate={handleDeleteDebate} // 🔥 डिलीट फंक्शन यहाँ पास कर दिया
+        onDeleteDebate={handleDeleteDebate} 
         onClose={() => setIsSidebarOpen(false)} 
       />
 
-      {/* ─── 🔥 CREATIVE VERTICAL SIDE-TAB (EDGE HANDLE) ─── */}
+      {/* ─── CREATIVE VERTICAL SIDE-TAB (EDGE HANDLE) ─── */}
       <button 
         onClick={() => setIsSidebarOpen(true)}
         className="fixed top-1/2 left-0 -translate-y-1/2 z-[40] flex flex-col items-center gap-3 py-5 px-1.5 bg-[#05070a]/90 backdrop-blur-xl border border-l-0 border-cyan-500/40 rounded-r-xl hover:bg-cyan-900/50 hover:px-2.5 transition-all duration-300 shadow-[0_0_20px_rgba(0,212,255,0.15)] group"
@@ -147,7 +146,7 @@ export default function Home() {
             >
               <HeroSection 
                 onStart={handleStart} 
-                mode={debate.mode} 
+                mode={debate.subject} 
                 setMode={debate.setMode} 
                 selectedLang={selectedLang} 
                 setSelectedLang={setSelectedLang} 
@@ -161,7 +160,7 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.55 }}
-              className="min-h-screen pt-4"
+              className="min-h-screen pt-4 pb-20"
             >
               <div className="flex items-center justify-between px-4 pt-5 pb-1 max-w-7xl mx-auto relative z-20">
                 <div> 
@@ -226,6 +225,16 @@ export default function Home() {
                 stockLoading={debate.stockLoading}
               />
 
+              {/* ─── 🔥 NEW GRAPH SECTION 🔥 ─── */}
+              <div className="flex flex-col gap-6 mt-8 max-w-7xl mx-auto px-4 w-full relative z-20">
+                {/* पहला ग्राफ: जो स्कोर्स का ट्रेंड दिखाएगा */}
+                <DebateGraph data={debate.scoreHistory} />
+
+                {/* दूसरा ग्राफ: जो AI के दिमाग का लॉजिक ट्री दिखाएगा */}
+                <ArgumentDAG messages={debate.messages} />
+              </div>
+              {/* ─── GRAPH SECTION END ─── */}
+
               <AnimatePresence>
                 {showVerdict && debate.scores && (
                   <motion.div
@@ -233,6 +242,7 @@ export default function Home() {
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     transition={{ duration: 0.5 }}
+                    className="mt-8"
                   >
                     <div className="flex items-center gap-4 px-4 max-w-7xl mx-auto mb-6">
                       <div className="flex-1 h-px bg-gradient-to-r from-transparent via-purple-500/40 to-transparent" />
