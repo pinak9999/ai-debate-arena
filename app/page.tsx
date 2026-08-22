@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { RotateCcw, AlertTriangle, Menu, History } from 'lucide-react'; // 🔥 History आइकॉन जोड़ा है
+import { RotateCcw, AlertTriangle, Menu, History } from 'lucide-react'; 
 import HeroSection from '@/components/HeroSection';
 import DebateArena from '@/components/DebateArena';
 import JudgeVerdict from '@/components/JudgeVerdict';
@@ -69,6 +69,9 @@ export default function Home() {
   };
 
   const handleSelectDebate = (item: any) => {
+    // 🔥 यही वो जादुई लाइन है जो डुप्लीकेट डिबेट बनने से रोकेगी!
+    savedDebateRef.current = true; 
+    
     debate.loadPastDebate(item);
     setIsSidebarOpen(false); 
   };
@@ -90,7 +93,6 @@ export default function Home() {
       />
 
       {/* ─── 🔥 CREATIVE VERTICAL SIDE-TAB (EDGE HANDLE) ─── */}
-      {/* यह बटन अब टॉप-लेफ्ट से हटकर, स्क्रीन के बीचों-बीच बायीं तरफ चिपका रहेगा */}
       <button 
         onClick={() => setIsSidebarOpen(true)}
         className="fixed top-1/2 left-0 -translate-y-1/2 z-[40] flex flex-col items-center gap-3 py-5 px-1.5 bg-[#05070a]/90 backdrop-blur-xl border border-l-0 border-cyan-500/40 rounded-r-xl hover:bg-cyan-900/50 hover:px-2.5 transition-all duration-300 shadow-[0_0_20px_rgba(0,212,255,0.15)] group"
@@ -147,7 +149,6 @@ export default function Home() {
               transition={{ duration: 0.55 }}
               className="min-h-screen pt-4"
             >
-              {/* 🔥 Arena हेडर को वापस सेंटर कर दिया गया है (pt-5 और px-4) */}
               <div className="flex items-center justify-between px-4 pt-5 pb-1 max-w-7xl mx-auto relative z-20">
                 <div> 
                   <h1 className="font-orbitron font-black text-base text-white tracking-[0.18em] uppercase">
