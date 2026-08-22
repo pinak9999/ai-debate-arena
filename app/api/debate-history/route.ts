@@ -38,3 +38,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
+// किसी डिबेट को डिलीट करने के लिए (DELETE)
+export async function DELETE(req: NextRequest) {
+  try {
+    await connectDB();
+    const url = new URL(req.url);
+    const id = url.searchParams.get('id');
+    
+    if (id) {
+      await Debate.findByIdAndDelete(id);
+      return NextResponse.json({ success: true });
+    }
+    return NextResponse.json({ success: false, error: 'No ID provided' }, { status: 400 });
+  } catch (error: any) {
+    return NextResponse.json({ success: false, error: error.message }, { status: 500 });
+  }
+}

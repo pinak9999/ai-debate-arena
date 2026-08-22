@@ -69,11 +69,24 @@ export default function Home() {
   };
 
   const handleSelectDebate = (item: any) => {
-    // 🔥 यही वो जादुई लाइन है जो डुप्लीकेट डिबेट बनने से रोकेगी!
-    savedDebateRef.current = true; 
-    
+    savedDebateRef.current = true; // डुप्लीकेट सेव होने से रोकेगा
     debate.loadPastDebate(item);
     setIsSidebarOpen(false); 
+  };
+
+  // 🔥 साइडबार से डिबेट डिलीट करने का नया फंक्शन
+  const handleDeleteDebate = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation(); // क्लिक करने पर डिबेट लोड न हो, सिर्फ डिलीट हो
+    
+    // UI से तुरंत हटा दो (ताकि तुम्हें तुरंत रिज़ल्ट दिखे)
+    setHistoryList(prev => prev.filter(item => item._id !== id && item.id !== id));
+    
+    // बैकग्राउंड में MongoDB से डिलीट कर दो
+    try {
+      await fetch(`/api/debate-history?id=${id}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error("Failed to delete", err);
+    }
   };
 
   const showHero    = debate.status === 'idle';
@@ -89,6 +102,7 @@ export default function Home() {
         historyList={historyList} 
         onSelectDebate={handleSelectDebate} 
         onNewDebate={handleNewDebate}
+        onDeleteDebate={handleDeleteDebate} // 🔥 डिलीट फंक्शन यहाँ पास कर दिया
         onClose={() => setIsSidebarOpen(false)} 
       />
 
