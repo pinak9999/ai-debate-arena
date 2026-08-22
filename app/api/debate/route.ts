@@ -4,7 +4,7 @@ import { createGroq } from '@ai-sdk/groq';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
-
+// 🔥 FIX: अगर API Key नहीं है, तो तुरंत क्रैश होने से बचाने के लिए || '' लगाया है
 const groq = createGroq({
   apiKey: process.env.GROQ_API_KEY || '', 
 });
@@ -13,8 +13,7 @@ const groq = createGroq({
 
 function safeJsonParse<T>(raw: string, fallback: T): T {
   try {
-    
-let clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
+    let clean = raw.replace(/```json/gi, '').replace(/```/g, '').trim();
     const startIndex = clean.indexOf('{');
     const endIndex = clean.lastIndexOf('}');
     if (startIndex !== -1 && endIndex !== -1) {
@@ -58,7 +57,7 @@ function toManualTextStream(text: string): Response {
 async function generateSearchQuery(text: string): Promise<string> {
   try {
     const { text: query } = await generateText({
-      model: groq('groq/compound'),
+      model: groq('groq/compound'), // 🔥 Typo Fixed: 'compounde' से 'compound' कर दिया
       prompt: `You are an expert Google Search query generator. Extract a highly specific 3 to 5 word search query to fact-check the following statement. \nStatement: "${text.slice(0, 300)}"\nCRITICAL: Output ONLY the search keywords. Do NOT use quotes, do NOT explain, do NOT write "Search query:". Just the words.`,
       temperature: 0.1,
     });
@@ -153,11 +152,13 @@ async function searchTavily(query: string): Promise<{ answer: string | null; sou
   }
 }
 
+// 🔥 FIX: Tavily Crash & Fallback Handling
 async function groundWithTavily(text: string): Promise<{ snippet: string; sources: TavilySource[] } | null> {
   try {
     const query = await generateSearchQuery(text);
     const result = await searchTavily(query);
     
+    // अगर Tavily से डेटा न मिले, तो सेफ फॉलबैक
     if (!result || (!result.answer && result.sources.length === 0)) {
       return { 
         snippet: "General logical reasoning, established factual consensus, and foundational principles.", 
@@ -236,15 +237,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ASLI ERROR: Invalid or empty JSON body received from frontend.' }, { status: 400 });
     }
 
-    // 🔥 THE MASTER FIX 2.0 FOR "Request Entity Too Large" 🔥
-    // Proxy servers block payloads larger than ~1MB.
-    // 1500 chars (approx 300 words) is absolutely enough for the AI to debate properly.
-    if (body.topic && typeof body.topic === 'string' && body.topic.length > 1500) {
-      body.topic = body.topic.slice(0, 1500) + "... [CONTENT TRUNCATED FOR API LIMITS]";
-    }
-
-    if (body.documentText && typeof body.documentText === 'string' && body.documentText.length > 1500) {
-      body.documentText = body.documentText.slice(0, 1500) + "... [CONTENT TRUNCATED FOR API LIMITS]";
+    // 🔥 THE MASTER TPM FIX 🔥
+    // यह ट्रांसक्रिप्ट को 6000 कैरेक्टर्स पर काट देगा।
+    // इससे AI को वीडियो का कॉन्टेक्स्ट भी मिल जाएगा, और बैकग्राउंड में होने वाली 4-5 कॉल्स से TPM लिमिट भी क्रॉस नहीं होगी।
+    if (body.topic && typeof body.topic === 'string' && body.topic.length > 6000) {
+      body.topic = body.topic.slice(0, 6000) + "... [CONTEXT TRUNCATED TO SAVE TPM LIMIT]";
     }
 
     if (body.type === 'stock_data') {
@@ -316,13 +313,7 @@ export async function POST(req: NextRequest) {
       const isDocumentMode = mode === 'document';
       const position = speaker === 'proponent' ? 'SUPPORTING' : 'OPPOSING';
 
-      // Keep only recent 6 messages to avoid blowing up payload sizes in late rounds
-      let recentHistory = history;
-      if (history.length > 6) {
-        recentHistory = history.slice(-6);
-      }
-
-      const messages = recentHistory.map((msg: { speaker: string; text: string }) => ({
+      const messages = history.map((msg: { speaker: string; text: string }) => ({
         role: msg.speaker === speaker ? 'assistant' : 'user',
         content: msg.text,
       }));
@@ -331,7 +322,7 @@ export async function POST(req: NextRequest) {
       if (isDocumentMode) {
         const documentText = body.documentText || '';
         groundingBlock = documentText 
-          ? `UPLOADED DOCUMENT / CODE CONTEXT:\n"""\n${documentText}\n"""\nCRITICAL: Use exact line numbers, variable names, or specific quotes from this document in your argument.`
+          ? `UPLOADED DOCUMENT / CODE CONTEXT:\n"""\n${documentText.slice(0, 10000)}\n"""\nCRITICAL: Use exact line numbers, variable names, or specific quotes from this document in your argument.`
           : `No document provided. Argue based on general software engineering or business principles.`;
       } else if (isStockMode) {
         groundingBlock = stockContext
@@ -354,6 +345,7 @@ CRITICAL: Use these EXACT numbers in your argument. Do not just state the price;
           : `Rely on strong logical deduction.`;
       }
 
+      // 🔥 FIX: Strict Anti-Repetition Rule
       const antiRepetitionRule = `
 STRICT ANTI-REPETITION & HUMAN PACING ENFORCEMENT:
 1. ZERO REPETITION: Do not re-state statistics, ranks, or arguments used in prior turns. Every round requires a brand new pillar of logic or an alternative metric.
@@ -547,6 +539,7 @@ Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) 
 
       let cleanOutput = stripMetaCommentary(stripFakeCitations(safeOutput));
 
+      // 🔥 THE ULTIMATE FIX: अगर सफाई के बाद डिब्बा खाली हो जाए, तो यह डायलॉग फायर होगा
       if (!cleanOutput || cleanOutput.trim() === '') {
         console.warn("⚠️ AI returned empty string after cleaning! Triggering blank fallback.");
         cleanOutput = language.toLowerCase() === 'english'
@@ -575,6 +568,9 @@ Respond directly and STRICTLY in ${language} native script (NO ENGLISH LETTERS) 
       return NextResponse.json({ critique: stripFakeCitations(text) });
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // 3. JUDGE VERDICT
+    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'judge_verdict') {
       const { topic, history = [], mode = 'topic', language = 'Hindi', audienceScore } = body;
       const biasNote = mode === 'personality'
@@ -695,6 +691,9 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap the JSON in markdown blocks
       });
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // 4. ROUND SCORE
+    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'round_score') {
       const { topic, history = [], round, language = 'Hindi' } = body;
 
@@ -759,6 +758,9 @@ Respond STRICTLY with JSON ONLY. Do NOT wrap in \`\`\`json: {"pro": <number>, "o
       });
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // 5. FALLACY & TONE CHECK
+    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fallacy_check') {
       const { text, topic, language = 'Hindi' } = body;
       const prompt = `You are an expert, UNBIASED Debate Moderator. Analyze this statement (written in ${language}) for GENUINE logical fallacies.
@@ -806,6 +808,9 @@ Respond STRICTLY with a RAW JSON object. DO NOT wrap in \`\`\`json.
       return NextResponse.json(finalParsed);
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // 6. FACT CHECK
+    // ─────────────────────────────────────────────────────────────────
     if (body.type === 'fact_check') {
       const { claim, language = 'Hindi' } = body;
       try {
