@@ -2,12 +2,12 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { RotateCcw, AlertTriangle, Menu } from 'lucide-react'; // 🔥 Menu आइकॉन जोड़ा है साइडबार खोलने/बंद करने के लिए
+import { RotateCcw, AlertTriangle, Menu } from 'lucide-react'; // 🔥 Menu आइकॉन
 import HeroSection from '@/components/HeroSection';
 import DebateArena from '@/components/DebateArena';
 import JudgeVerdict from '@/components/JudgeVerdict';
 import ParticleBackground from '@/components/ParticleBackground';
-import Sidebar from '@/components/Sidebar'; // 🔥 तुम्हारा नया साइडबार इम्पोर्ट किया
+import Sidebar from '@/components/Sidebar'; // 🔥 साइडबार
 import { useDebate, DebateLanguage } from '@/hooks/useDebate'; 
 
 export default function Home() {
@@ -17,7 +17,7 @@ export default function Home() {
   // ─── 🗄️ HISTORY & SIDEBAR STATES ───
   const [historyList, setHistoryList] = useState<any[]>([]);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
-  const savedDebateRef = useRef(false); // एक ही डिबेट को दो बार सेव होने से रोकने के लिए
+  const savedDebateRef = useRef(false);
 
   // 1. डेटाबेस से पुरानी डिबेट्स मंगाना
   const fetchHistory = async () => {
@@ -40,7 +40,7 @@ export default function Home() {
   // 2. ऑटो-सेव लॉजिक: जब डिबेट खत्म हो और स्कोर आ जाए, तो सेव करो
   useEffect(() => {
     if (debate.status === 'finished' && debate.scores && !savedDebateRef.current) {
-      savedDebateRef.current = true; // लॉक कर दो ताकि डुप्लीकेट सेव न हो
+      savedDebateRef.current = true;
       
       fetch('/api/debate-history', {
         method: 'POST',
@@ -52,7 +52,7 @@ export default function Home() {
           messages: debate.messages,
           winner: debate.scores.winner
         })
-      }).then(() => fetchHistory()); // सेव होने के बाद साइडबार अपडेट करो
+      }).then(() => fetchHistory());
     }
   }, [debate.status, debate.scores, debate.topic, debate.subject, debate.language, debate.messages]);
 
@@ -63,7 +63,7 @@ export default function Home() {
     subject: 'topic' | 'stock' | 'personality' | 'youtube' | 'document', 
     documentText?: string
   ) => {
-    savedDebateRef.current = false; // नई डिबेट के लिए सेव लॉक खोल दो
+    savedDebateRef.current = false;
     debate.startDebate({ topic: input, totalRounds: rounds, subject, language: selectedLang, documentText });
   };
 
@@ -72,11 +72,9 @@ export default function Home() {
     savedDebateRef.current = false;
   };
 
+  // 🔥 अलर्ट हटाकर असली लोड फंक्शन डाल दिया गया है! 
   const handleSelectDebate = (item: any) => {
-    // 🔥 अभी के लिए यह कंसोल में डेटा दिखाएगा। 
-    // इसे अरीना में लोड करने के लिए हमें useDebate में एक छोटा सा बदलाव करना होगा।
-    console.log("Selected Debate from History:", item);
-    alert(`आपने "${item.topic}" सेलेक्ट किया है। इसे अरीना में लोड करने का लॉजिक अगले स्टेप में जोड़ेंगे!`);
+    debate.loadPastDebate(item);
   };
 
   const showHero    = debate.status === 'idle';
@@ -84,7 +82,6 @@ export default function Home() {
   const showVerdict = debate.status === 'finished' && !!debate.scores;
 
   return (
-    // 🔥 यहाँ हमने फ्लेक्स (flex) लेआउट का इस्तेमाल किया है ताकि साइडबार और मेन पेज साथ दिखें
     <div className="flex h-screen bg-[#08090c] overflow-hidden font-sans">
       
       {/* ─── SIDEBAR COMPONENT ─── */}
@@ -111,7 +108,7 @@ export default function Home() {
           }}
         />
 
-        {/* Sidebar Toggle Button (अगर साइडबार बंद हो जाए तो खोलने के लिए) */}
+        {/* Sidebar Toggle Button */}
         <button 
           onClick={() => setIsSidebarOpen(!isSidebarOpen)}
           className="absolute top-5 left-4 z-50 p-2 text-white/50 hover:text-cyan-400 bg-white/5 rounded-lg hover:bg-white/10 transition border border-white/10"
@@ -126,7 +123,7 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0, scale: 0.97, transition: { duration: 0.3 } }}
-              className="w-full min-h-screen relative z-10 flex flex-col justify-between pt-10" // pt-10 ताकि टॉगल बटन के लिए जगह रहे
+              className="w-full min-h-screen relative z-10 flex flex-col justify-between pt-10" 
             >
               <HeroSection 
                 onStart={handleStart} 
@@ -144,10 +141,10 @@ export default function Home() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               transition={{ duration: 0.55 }}
-              className="min-h-screen pt-12" // pt-12 ताकि टॉगल बटन से ना टकराए
+              className="min-h-screen pt-12"
             >
               <div className="flex items-center justify-between px-4 pb-1 max-w-7xl mx-auto relative z-20">
-                <div className="ml-10"> {/* ml-10 टॉगल बटन के लिए स्पेस */}
+                <div className="ml-10"> 
                   <h1 className="font-orbitron font-black text-base text-white tracking-[0.18em] uppercase">
                     {debate.subject === 'stock' ? 'Financial War-Room' : 
                      debate.subject === 'personality' ? 'Personality Clash Arena' : 

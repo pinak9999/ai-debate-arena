@@ -45,7 +45,6 @@ export interface JudgeScores {
 export type DebateStatus = 'idle' | 'debating' | 'judging' | 'finished' | 'error';
 export type DebateMode = 'spectator' | 'player';
 
-// 🔥 यहाँ 'document' को सुरक्षित तरीके से जोड़ दिया गया है
 export type DebateSubject = 'topic' | 'stock' | 'personality' | 'youtube' | 'document';
 
 export type DebateLanguage =
@@ -102,7 +101,7 @@ export interface DebateConfig {
   totalRounds: number;
   subject?: DebateSubject;
   language?: DebateLanguage | string;
-  documentText?: string; // 🔥 नया पैरामीटर जो फाइल का टेक्स्ट स्टोर करेगा
+  documentText?: string; 
 }
 
 export interface AgentLog {
@@ -133,6 +132,7 @@ export interface UseDebateReturn {
   error: string | null;
   startDebate: (config: DebateConfig) => void;
   resetDebate: () => void;
+  loadPastDebate: (savedData: any) => void; // 🔥 यहाँ नया फंक्शन डिक्लेयर किया है
   isSpeaking: boolean;
   isMuted: boolean;
   toggleMute: () => void;
@@ -229,7 +229,7 @@ export function useDebate(): UseDebateReturn {
     topicRef.current = topic;
   }, [topic]);
 
-  const documentTextRef = useRef<string | undefined>(undefined); // 🔥 डॉक्यूमेंट टेक्स्ट को सुरक्षित रखने के लिए
+  const documentTextRef = useRef<string | undefined>(undefined); 
 
   const [scoreHistory, setScoreHistory] = useState<ScorePoint[]>([]);
   const [mode, setMode] = useState<DebateMode>('spectator');
@@ -359,7 +359,7 @@ export function useDebate(): UseDebateReturn {
     setScores(null);
     setTopic('');
     topicRef.current = '';
-    documentTextRef.current = undefined; // 🔥
+    documentTextRef.current = undefined; 
     setError(null);
     setScoreHistory([]);
     setWaitingForPlayer(false);
@@ -374,6 +374,42 @@ export function useDebate(): UseDebateReturn {
     setStockLoading(false);
     playerInputResolverRef.current = null;
     streamingTextRef.current = '';
+  }, [stopSpeech, stopVotePolling]);
+
+  // 🔥 पुरानी डिबेट लोड करने का नया फंक्शन
+  const loadPastDebate = useCallback((savedData: any) => {
+    abortControllerRef.current?.abort();
+    stopSpeech();
+    stopVotePolling();
+    supabase.removeAllChannels();
+    
+    setStatus('finished');
+    
+    setTopic(savedData.topic);
+    topicRef.current = savedData.topic;
+    
+    setSubject(savedData.mode || 'topic');
+    
+    if (savedData.language) {
+      setLanguage(savedData.language);
+      languageRef.current = savedData.language;
+    }
+    
+    setMessages(savedData.messages || []);
+    
+    // पुरानी डिबेट का वर्डिक्ट सेट करना
+    setScores({
+      winner: savedData.winner || 'tie',
+      summary: 'यह आर्काइव (Archive) से लोड की गई पुरानी डिबेट है।',
+      proponent: { logic: 85, creativity: 85, persuasion: 85, evidence: 85, overall: 85 },
+      opponent: { logic: 85, creativity: 85, persuasion: 85, evidence: 85, overall: 85 }
+    });
+
+    setStreamingText('');
+    setStreamingMessageId(null);
+    setCurrentSpeaker(null);
+    setError(null);
+    setWaitingForPlayer(false);
   }, [stopSpeech, stopVotePolling]);
 
   const readTextStream = useCallback(
@@ -436,7 +472,7 @@ export function useDebate(): UseDebateReturn {
         stockContext?: StockData | null;
         audienceScore?: AudienceScore;
         language?: DebateLanguage | string;
-        documentText?: string; // 🔥 नया पैरामीटर
+        documentText?: string; 
       },
       signal: AbortSignal
     ): Promise<string> => {
@@ -457,7 +493,7 @@ export function useDebate(): UseDebateReturn {
           stockContext: params.stockContext || undefined,
           audienceScore: params.audienceScore,
           language: params.language,
-          documentText: params.documentText, // 🔥 यहाँ API को भेज रहे हैं
+          documentText: params.documentText, 
         }),
         signal,
       });
@@ -678,7 +714,7 @@ export function useDebate(): UseDebateReturn {
 
       setTopic(config.topic);
       topicRef.current = config.topic;
-      documentTextRef.current = config.documentText; // 🔥 
+      documentTextRef.current = config.documentText; 
       
       setTotalRounds(config.totalRounds);
       setStatus('debating');
@@ -720,7 +756,6 @@ export function useDebate(): UseDebateReturn {
       } else if (subjectMode === 'youtube') {
         addLog(`[System] YouTube Creator Clash activated — AI agents will debate the video's core claims.`, 'system');
       } else if (subjectMode === 'document') {
-        // 🔥 Document Mode Log
         addLog(`[System] Enterprise Code Audit activated — AI agents will review the uploaded document/code.`, 'system');
       }
 
@@ -800,7 +835,7 @@ export function useDebate(): UseDebateReturn {
                   stockContext: fetchedStockData,
                   audienceScore: audienceScoreRef.current,
                   language: languageRef.current,
-                  documentText: documentTextRef.current, // 🔥
+                  documentText: documentTextRef.current, 
                 },
                 signal
               );
@@ -944,6 +979,7 @@ export function useDebate(): UseDebateReturn {
     error,
     startDebate,
     resetDebate,
+    loadPastDebate, // 🔥 इसे भी एक्सपोर्ट कर दिया गया है
     isSpeaking,
     isMuted,
     toggleMute,
