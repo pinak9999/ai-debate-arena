@@ -9,7 +9,6 @@ import JudgeVerdict from '@/components/JudgeVerdict';
 import ParticleBackground from '@/components/ParticleBackground';
 import Sidebar from '@/components/Sidebar';
 import { useDebate, DebateLanguage } from '@/hooks/useDebate'; 
-import { DebateGraph } from '@/components/DebateGraph'; // तेरा पुराना स्कोर ग्राफ
 import { ArgumentDAG } from '@/components/ArgumentDAG'; // अपना नया लॉजिक ट्री
 
 export default function Home() {
@@ -146,7 +145,7 @@ export default function Home() {
             >
               <HeroSection 
                 onStart={handleStart} 
-               mode={debate.subject as any}
+                mode={debate.subject as any}
                 setMode={debate.setMode} 
                 selectedLang={selectedLang} 
                 setSelectedLang={setSelectedLang} 
@@ -226,11 +225,8 @@ export default function Home() {
               />
 
               {/* ─── 🔥 NEW GRAPH SECTION 🔥 ─── */}
-              <div className="flex flex-col gap-6 mt-8 max-w-7xl mx-auto px-4 w-full relative z-20">
-                {/* पहला ग्राफ: जो स्कोर्स का ट्रेंड दिखाएगा */}
-                <DebateGraph data={debate.scoreHistory} />
-
-                {/* दूसरा ग्राफ: जो AI के दिमाग का लॉजिक ट्री दिखाएगा */}
+              <div className="mt-8 max-w-7xl mx-auto px-4 w-full relative z-20">
+                {/* AI के दिमाग का लॉजिक ट्री */}
                 <ArgumentDAG messages={debate.messages} />
               </div>
               {/* ─── GRAPH SECTION END ─── */}
