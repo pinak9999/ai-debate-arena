@@ -31,7 +31,7 @@ import type {
   StockData,
 } from '@/hooks/useDebate';
 
-// ─── 🎥 CINEMATIC AGENT PANEL WITH LASER SCANNER & CROWD ──────────────────────────
+// ─── 🎥 CINEMATIC AGENT PANEL WITH LASER SCANNER ──────────────────────────
 
 interface AgentPanelProps {
   side:               'proponent' | 'opponent';
@@ -70,7 +70,6 @@ function AgentPanel({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // ऑटो-स्क्रॉल के लिए
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -80,17 +79,13 @@ function AgentPanel({
     }
   }, [messages.length, streamingText]);
 
-  // 🔥 NEW: APPLAUSE EFFECT LOGIC (तालियों की आवाज़)
   const applaudedMessages = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (messages.length > 0) {
       const latestMessage = messages[messages.length - 1];
-      // Check if message is complete and has fallacies data
       if (latestMessage.isComplete && fallacies[latestMessage.id]) {
-        // यह चेक करेगा कि क्या इस मैसेज पर पहले ही तालियां बज चुकी हैं
         if (!applaudedMessages.current.has(latestMessage.id)) {
           const stats = fallacies[latestMessage.id];
-          // अगर लॉजिक 90% या उससे ऊपर है और कोई पेनल्टी नहीं है, तो तालियां बजेंगी!
           if (stats.logicScore >= 90 && stats.penalty === 0) {
             soundEngine.playApplause();
             applaudedMessages.current.add(latestMessage.id);
@@ -124,35 +119,25 @@ function AgentPanel({
       transition={{ type: "spring", stiffness: 100, damping: 20 }}
     >
       
-      {/* 🔥 HOLOGRAPHIC LASER SCANNER (जब एजेंट चुप है) 🔥 */}
       {!isActive && !isDebateOver && (
         <div className="absolute inset-0 z-50 pointer-events-none overflow-hidden rounded-2xl">
           <motion.div 
             className="w-full h-[2px]"
-            style={{ 
-              background: color, 
-              boxShadow: `0 0 20px 3px ${color}` 
-            }}
+            style={{ background: color, boxShadow: `0 0 20px 3px ${color}` }}
             animate={{ y: ['0%', '560px', '0%'] }} 
             transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
           />
           <div className="absolute inset-0 opacity-10 animate-pulse" style={{ background: `linear-gradient(180deg, transparent, ${color}, transparent)` }} />
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-3 bg-black/50 p-4 rounded-xl backdrop-blur-md border" style={{ borderColor: `rgba(${rgb}, 0.2)` }}>
              <ScanLine className="w-8 h-8 animate-pulse" style={{ color }} />
-             <span className="text-[10px] font-orbitron tracking-[0.3em] uppercase font-bold" style={{ color }}>
-               Scanning Patterns...
-             </span>
+             <span className="text-[10px] font-orbitron tracking-[0.3em] uppercase font-bold" style={{ color }}>Scanning Patterns...</span>
           </div>
         </div>
       )}
 
-      {/* ── Panel header ── */}
       <motion.div
         className="flex items-center gap-3 px-4 py-3 border-b flex-shrink-0 backdrop-blur-md relative z-40"
-        style={{
-          borderColor: `rgba(${rgb}, 0.18)`,
-          background:  `linear-gradient(90deg, rgba(${rgb}, ${isActive ? 0.15 : 0.04}) 0%, rgba(5,8,16,0.9) 100%)`,
-        }}
+        style={{ borderColor: `rgba(${rgb}, 0.18)`, background: `linear-gradient(90deg, rgba(${rgb}, ${isActive ? 0.15 : 0.04}) 0%, rgba(5,8,16,0.9) 100%)` }}
         transition={{ duration: 0.5 }}
       >
         <motion.div
@@ -188,18 +173,13 @@ function AgentPanel({
         </AnimatePresence>
       </motion.div>
 
-      {/* ── LIVE STATS METERS ── */}
       {(messages.length > 0) && (
         <div className="px-4 py-2 bg-black/60 border-b border-white/5 flex flex-col gap-2 flex-shrink-0 backdrop-blur-md relative z-40">
           <AnimatePresence>
             {latestStats?.hasFallacy && latestStats?.penalty > 0 && (
               <motion.div
                 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
-                // 🔥 NEW: PENALTY PAR GLITCH OR BOOING (हूटिंग) DONO SOUND
-                onAnimationStart={() => {
-                  soundEngine.playGlitch();
-                  soundEngine.playBoo(); 
-                }}
+                onAnimationStart={() => { soundEngine.playGlitch(); soundEngine.playBoo(); }}
                 className="flex items-center gap-2 text-rose-400 bg-rose-500/10 px-2 py-1.5 rounded border border-rose-500/30 text-[10px] font-bold uppercase tracking-wider mb-1 animate-[shake_0.5s_ease-in-out]"
               >
                 <AlertTriangle className="w-3 h-3 shrink-0" />
@@ -231,7 +211,6 @@ function AgentPanel({
         </div>
       )}
 
-      {/* ── Messages scroll area ── */}
       <div ref={containerRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 bg-[#02050A]/80 custom-scrollbar relative z-30">
         <AnimatePresence mode="popLayout">
           {messages.map((msg) => {
@@ -329,28 +308,22 @@ export default function DebateArena(props: DebateArenaProps) {
     }
   }, [currentRound, topic, status]);
 
-  // 🎵 PREMIUM MOVIE SOUND SYSTEM 🎵
   useEffect(() => {
-    if (currentRound > 1 && currentRound <= totalRounds && currentSpeaker === 'proponent') {
-      soundEngine.playBell(); 
-    }
+    if (currentRound > 1 && currentRound <= totalRounds && currentSpeaker === 'proponent') soundEngine.playBell(); 
   }, [currentRound, currentSpeaker, totalRounds]);
 
   useEffect(() => {
-    if (status === 'judging') {
-      soundEngine.playJudge(); 
-    }
+    if (status === 'judging') soundEngine.playJudge(); 
   }, [status]);
 
   const previousTextLength = useRef(0);
   useEffect(() => {
     if (streamingText && streamingText.length > previousTextLength.current) {
-      if (Math.random() > 0.6) soundEngine.playType(); // Typewriter effect
+      if (Math.random() > 0.6) soundEngine.playType(); 
     }
     previousTextLength.current = streamingText.length;
   }, [streamingText]);
 
-  // 🔥 THEATER SPOTLIGHT GLOW BACKGROUND
   const getTheaterLighting = () => {
     if (status === 'judging' || status === 'finished') return 'bg-purple-900/10 shadow-[inset_0_0_500px_rgba(168,85,247,0.2)]';
     if (currentSpeaker === 'proponent') return 'bg-cyan-900/10 shadow-[inset_0_0_500px_rgba(6,182,212,0.15)]';
@@ -361,7 +334,6 @@ export default function DebateArena(props: DebateArenaProps) {
   return (
     <motion.div className="relative z-10 w-full min-h-screen" initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.6 }}>
       
-      {/* GLOBAL CSS FOR SCREEN SHAKE */}
       <style dangerouslySetInnerHTML={{__html: `
         @keyframes shake {
           0%, 100% { transform: translateX(0); }
@@ -371,10 +343,8 @@ export default function DebateArena(props: DebateArenaProps) {
         }
       `}} />
 
-      {/* 🎬 DYNAMIC THEATER LIGHTING (AMBIENT GLOW) */}
       <div className={`fixed inset-0 pointer-events-none transition-all duration-1000 ease-in-out z-[-1] ${getTheaterLighting()}`} />
 
-      {/* ─── ⚖️ 3D MASSIVE JUDGE HOLOGRAM ─── */}
       <AnimatePresence>
         {status === 'judging' && (
           <motion.div
@@ -382,7 +352,6 @@ export default function DebateArena(props: DebateArenaProps) {
             initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, filter: "blur(20px)", scale: 1.5 }} transition={{ duration: 0.8 }}
           >
             <div className="absolute inset-0 bg-black/80 backdrop-blur-md pointer-events-auto" />
-            
             <motion.div 
               className="relative flex flex-col items-center z-10"
               initial={{ scale: 0, rotateY: 90 }} animate={{ scale: 1, rotateY: 0 }} exit={{ scale: 2, opacity: 0 }}
@@ -404,15 +373,28 @@ export default function DebateArena(props: DebateArenaProps) {
         )}
       </AnimatePresence>
 
-      {/* Sticky HUD */}
       <RoundIndicator currentRound={currentRound} totalRounds={totalRounds} currentSpeaker={activeGlowSpeaker} status={status} topic={topic} />
 
       <div className="px-3 max-w-7xl mx-auto flex flex-wrap items-center justify-end gap-3 mt-3">
         <DownloadReportButton topic={topic} messages={messages} scores={scores} scoreHistory={scoreHistory} disabled={status !== 'finished'} />
       </div>
 
+      {/* 🔥 THE FIXED STOCK CHART SECTION WITH Z-INDEX AND LOADER 🔥 */}
       {isStock && (status !== 'idle') && (
-        <div className="px-3 max-w-7xl mx-auto mt-4"><StockChart data={stockData} loading={stockLoading} /></div>
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="relative z-30 px-3 max-w-7xl mx-auto mt-4 w-full"
+        >
+          {stockLoading && !stockData ? (
+             <div className="h-64 md:h-80 w-full flex flex-col items-center justify-center rounded-2xl border border-cyan-500/20 bg-[#050810]/80 backdrop-blur-xl shadow-[0_0_15px_rgba(0,212,255,0.1)]">
+                <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mb-3" />
+                <span className="text-cyan-400 font-orbitron text-[10px] tracking-widest uppercase">Fetching Live Market Data...</span>
+             </div>
+          ) : (
+             <StockChart data={stockData} loading={stockLoading} />
+          )}
+        </motion.div>
       )}
 
       {/* ─── LIVE GRAPH + QR VOTING PANEL ────────────────── */}
@@ -446,7 +428,6 @@ export default function DebateArena(props: DebateArenaProps) {
         </div>
       )}
 
-      {/* ─── Agent Brain Visual Flowchart ────────────────────────── */}
       {status !== 'idle' && (
         <div className="px-3 max-w-7xl mx-auto mt-4">
           <div className="h-32 md:h-40 rounded-xl border border-gray-800 bg-[#050505] overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,1)]">
@@ -455,7 +436,6 @@ export default function DebateArena(props: DebateArenaProps) {
         </div>
       )}
 
-      {/* ─── Agent Trace Panel (Terminal UI) ────────────────────────── */}
       {status !== 'idle' && agentLogs.length > 0 && (
         <div className="px-3 max-w-7xl mx-auto mt-4">
           <div className="rounded-xl border border-gray-800 bg-[#050505] p-3 font-mono text-[10px] sm:text-xs overflow-hidden flex flex-col h-32 md:h-40 shadow-[inset_0_0_20px_rgba(0,0,0,1)]">
@@ -487,7 +467,6 @@ export default function DebateArena(props: DebateArenaProps) {
 
       <div className="px-3 max-w-7xl mx-auto mt-4"><PlayerInput waiting={waitingForPlayer} onSubmit={submitPlayerArgument} /></div>
 
-      {/* ─── 🎥 CINEMATIC SPLIT ARENA (WITH CAMERA FOCUS) ────────────────────────── */}
       <div className="px-3 pb-6 max-w-7xl mx-auto">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 perspective-[1000px]">
           <div style={{ minHeight: '560px' }}>
