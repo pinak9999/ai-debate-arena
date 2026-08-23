@@ -2,7 +2,6 @@
 
 import { useState, useRef, type KeyboardEvent } from 'react';
 import { motion, type Variants } from 'framer-motion';
-// 🔥 Bot और Gamepad2 आइकॉन के साथ यहाँ नया इम्पॉर्ट जोड़ा गया है
 import { Zap, Brain, TrendingUp, Target, Flame, Sparkles, PlaySquare, FileCode, Bot, Gamepad2 } from 'lucide-react';
 import { DebateLanguage } from '@/hooks/useDebate';
 
@@ -11,7 +10,8 @@ interface HeroSectionProps {
     input: string, 
     rounds: number, 
     subject: 'topic' | 'stock' | 'personality' | 'youtube' | 'document', 
-    documentText?: string
+    documentText?: string,
+    mode?: 'spectator' | 'player'
   ) => void;
   mode: 'spectator' | 'player';
   setMode: (mode: 'spectator' | 'player') => void;
@@ -58,7 +58,6 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
   const [rounds, setRounds] = useState(3);
   const [launching, setLaunching] = useState(false);
   
-  // Document Mode के लिए States
   const [documentText, setDocumentText] = useState('');
   const [fileName, setFileName] = useState('');
   const [uploadError, setUploadError] = useState('');
@@ -72,7 +71,6 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
   
   const examples = !isDocument ? EXAMPLES[subject as keyof typeof EXAMPLES] : [];
 
-  // फाइल अपलोड हैंडल करने का लॉजिक
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -124,16 +122,16 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
         }
 
         const debatePrompt = `[YOUTUBE CONTEXT] Video Topic: ${data.topic} | Creator's Main Claims: ${data.claims}`;
-        setTimeout(() => onStart(debatePrompt, rounds, 'youtube'), 500);
+        setTimeout(() => onStart(debatePrompt, rounds, 'youtube', undefined, mode), 500);
 
       } catch (err) {
         alert('Failed to fetch video transcript. Make sure the link is valid.');
         setLaunching(false);
       }
     } else if (isDocument) {
-      setTimeout(() => onStart(topic || 'Uploaded Document', rounds, 'document', documentText), 400);
+      setTimeout(() => onStart(topic || 'Uploaded Document', rounds, 'document', documentText, mode), 400);
     } else {
-      setTimeout(() => onStart(topic.trim(), rounds, subject), 400);
+      setTimeout(() => onStart(topic.trim(), rounds, subject, undefined, mode), 400);
     }
   };
 
@@ -157,7 +155,8 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
 
   return (
     <motion.div
-      className="w-full h-[100dvh] flex flex-col bg-[#050810] relative overflow-hidden"
+      // 🔥 यहाँ bg-[#050810] को bg-transparent कर दिया है ताकि बैकग्राउंड पार्टिकल्स दिखें 
+      className="w-full h-[100dvh] flex flex-col bg-transparent relative overflow-hidden"
       variants={containerVariants}
       initial="hidden"
       animate="visible"
@@ -188,8 +187,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
       {/* ── Header ── */}
       <header className="shrink-0 h-[8vh] min-h-[50px] flex items-center justify-between px-4 sm:px-6 z-20">
         
-        {/* 🔥 HIGH-CONTRAST INLINE MODE TOGGLE (100% Guaranteed Visual Selection) */}
-        <div className="flex items-center gap-1.5 p-1.5 bg-[#0a0f1d] border border-cyan-500/30 rounded-2xl shadow-[0_0_25px_rgba(0,0,0,0.8)] backdrop-blur-xl">
+        <div className="flex items-center gap-1.5 p-1.5 bg-[#0a0f1d]/80 border border-cyan-500/30 rounded-2xl shadow-[0_0_25px_rgba(0,0,0,0.8)] backdrop-blur-xl">
           {/* SPECTATOR MODE BUTTON */}
           <button
             type="button"
@@ -260,10 +258,10 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
       <main className="flex-1 min-h-0 flex flex-col items-center justify-center px-4 z-10 w-full max-w-4xl mx-auto py-2">
         
         <motion.div variants={itemVariants} className="text-center mb-[2vh] shrink-0">
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-[9px] font-bold tracking-widest uppercase border border-blue-500/20 mb-2">
+          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-500/10 text-blue-400 text-[9px] font-bold tracking-widest uppercase border border-blue-500/20 mb-2 backdrop-blur-md">
             <Brain className="w-3 h-3 animate-pulse" /> Live AI Engine
           </span>
-          <h1 className="font-orbitron font-black uppercase leading-[0.9] tracking-tighter text-[clamp(28px,7vh,70px)]">
+          <h1 className="font-orbitron font-black uppercase leading-[0.9] tracking-tighter text-[clamp(28px,7vh,70px)] drop-shadow-2xl">
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 via-blue-500 to-cyan-400 animate-gradient-x block">
               AI DEBATE
             </span>
@@ -274,7 +272,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
         </motion.div>
 
         <motion.div variants={itemVariants} className="w-full shrink">
-          <div className="relative bg-white/[0.03] border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-xl shadow-2xl flex flex-col gap-[1.5vh]">
+          <div className="relative bg-[#0a0f1d]/60 border border-white/10 rounded-2xl p-4 sm:p-5 backdrop-blur-xl shadow-[0_0_40px_rgba(0,0,0,0.5)] flex flex-col gap-[1.5vh]">
             
             {/* Tabs */}
             <div className="flex p-1 bg-black/40 border border-white/5 rounded-xl shrink-0 overflow-x-auto scrollbar-hide">
@@ -325,7 +323,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
               <div className={`absolute -inset-0.5 bg-gradient-to-r ${themeColors.glow} rounded-xl blur opacity-20 transition duration-500`} />
               
               {isDocument ? (
-                <div className="relative w-full h-[80px] bg-[#0a0f1a] border border-dashed border-white/20 hover:border-purple-500/50 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer overflow-hidden">
+                <div className="relative w-full h-[80px] bg-black/50 border border-dashed border-white/20 hover:border-purple-500/50 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer overflow-hidden">
                   <input 
                     type="file" 
                     accept=".js,.ts,.jsx,.tsx,.py,.txt,.json,.md,.css,.html" 
@@ -354,7 +352,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
                   onKeyDown={handleKeyDown}
                   placeholder={isYoutube ? 'Paste a YouTube video link here...' : isStock ? 'e.g. SUZLON.NS' : isPersonality ? 'Enter a philosophical topic...' : 'Enter a debate topic...'}
                   rows={1}
-                  className={`relative w-full bg-[#0a0f1a] border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-600 text-[12px] sm:text-[13px] outline-none resize-none transition-all duration-300 focus:${themeColors.border} overflow-hidden`}
+                  className={`relative w-full bg-black/50 border border-white/10 rounded-xl px-4 py-3 text-white placeholder-gray-500 text-[12px] sm:text-[13px] outline-none resize-none transition-all duration-300 focus:${themeColors.border} overflow-hidden`}
                 />
               )}
             </div>
@@ -367,7 +365,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
                     <button
                       key={t}
                       onClick={() => { if(!isYoutube) setTopic(t); }}
-                      className="inline-block text-[9px] sm:text-[10px] px-3 py-1.5 rounded-md border border-white/10 bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white transition-all cursor-pointer font-medium"
+                      className="inline-block text-[9px] sm:text-[10px] px-3 py-1.5 rounded-md border border-white/10 bg-white/5 text-gray-400 hover:bg-white/15 hover:text-white transition-all cursor-pointer font-medium"
                     >
                       {t}
                     </button>
@@ -378,13 +376,13 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
 
             {/* Footer */}
             <div className="flex items-center justify-between gap-3 pt-3 border-t border-white/10 shrink-0">
-              <div className="flex items-center bg-black/30 p-1 rounded-xl border border-white/5 shrink-0">
+              <div className="flex items-center bg-black/40 p-1 rounded-xl border border-white/5 shrink-0">
                 {([3, 5, 7] as const).map((r) => (
                   <button
                     key={r}
                     onClick={() => setRounds(r)}
                     className={`px-3 py-1.5 rounded-lg text-[10px] font-bold font-orbitron transition-all ${
-                      rounds === r ? 'bg-white/15 text-white' : 'text-gray-500 hover:text-gray-300'
+                      rounds === r ? 'bg-white/20 text-white shadow-sm' : 'text-gray-500 hover:text-gray-300'
                     }`}
                   >
                     {r} R
@@ -421,10 +419,10 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
       </main>
 
       {/* ── Footer Ticker ── */}
-      <footer className="shrink-0 h-[4vh] min-h-[25px] w-full overflow-hidden border-t border-white/10 relative z-10 bg-black/20 flex items-center [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_92%,transparent)]">
+      <footer className="shrink-0 h-[4vh] min-h-[25px] w-full overflow-hidden border-t border-white/10 relative z-10 bg-black/40 flex items-center [mask-image:linear-gradient(90deg,transparent,#000_8%,#000_92%,transparent)] backdrop-blur-md">
         <div className="flex w-max gap-8 animate-[marquee_20s_linear_infinite]">
           {[...TICKER_ITEMS, ...TICKER_ITEMS, ...TICKER_ITEMS].map((item, idx) => (
-            <span key={idx} className="font-mono text-[9px] tracking-widest uppercase text-gray-500 whitespace-nowrap flex items-center gap-2">
+            <span key={idx} className="font-mono text-[9px] tracking-widest uppercase text-gray-400 whitespace-nowrap flex items-center gap-2">
               <b className={themeColors.text}>◆</b> {item}
             </span>
           ))}
