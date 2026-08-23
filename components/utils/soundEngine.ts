@@ -20,46 +20,32 @@ class SoundEngine {
     if (this.isMuted) return;
     this.init();
     if (!this.audioCtx) return;
-
     const t = this.audioCtx.currentTime;
-    
-    // Create oscillator for the main body of the bell sound
     const osc = this.audioCtx.createOscillator();
     const gainNode = this.audioCtx.createGain();
-
-    osc.type = 'sine'; // Sine wave for a smooth, bell-like tone
-    osc.frequency.setValueAtTime(440, t); // Starting frequency (A4)
-    osc.frequency.exponentialRampToValueAtTime(220, t + 1.5); // Frequency drop for realism
-
-    // Create an oscillator for the metallic 'hit' or 'clang'
     const hitOsc = this.audioCtx.createOscillator();
     const hitGainNode = this.audioCtx.createGain();
 
-    hitOsc.type = 'triangle'; // Triangle wave for a sharper, metallic attack
-    hitOsc.frequency.setValueAtTime(880, t); // Higher frequency for the hit
+    osc.type = 'sine'; 
+    osc.frequency.setValueAtTime(440, t); 
+    osc.frequency.exponentialRampToValueAtTime(220, t + 1.5); 
+    hitOsc.type = 'triangle'; 
+    hitOsc.frequency.setValueAtTime(880, t); 
     hitOsc.frequency.exponentialRampToValueAtTime(440, t + 0.5);
 
-    // Envelope for the main bell sound (long decay)
     gainNode.gain.setValueAtTime(0, t);
-    gainNode.gain.linearRampToValueAtTime(0.8, t + 0.05); // Quick attack
-    gainNode.gain.exponentialRampToValueAtTime(0.01, t + 2.0); // Long, smooth decay
-
-    // Envelope for the metallic hit (short decay)
+    gainNode.gain.linearRampToValueAtTime(0.8, t + 0.05); 
+    gainNode.gain.exponentialRampToValueAtTime(0.01, t + 2.0); 
     hitGainNode.gain.setValueAtTime(0, t);
-    hitGainNode.gain.linearRampToValueAtTime(0.5, t + 0.02); // Very quick attack
-    hitGainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.3); // Short decay
+    hitGainNode.gain.linearRampToValueAtTime(0.5, t + 0.02); 
+    hitGainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.3); 
 
-    // Connect nodes
     osc.connect(gainNode);
     hitOsc.connect(hitGainNode);
-    
     gainNode.connect(this.audioCtx.destination);
     hitGainNode.connect(this.audioCtx.destination);
-
-    // Start and stop
     osc.start(t);
     hitOsc.start(t);
-    
     osc.stop(t + 2.0);
     hitOsc.stop(t + 0.5);
   }
@@ -68,30 +54,23 @@ class SoundEngine {
      if (this.isMuted) return;
      this.init();
      if (!this.audioCtx) return;
-
      const t = this.audioCtx.currentTime;
      const osc = this.audioCtx.createOscillator();
      const gainNode = this.audioCtx.createGain();
      const filter = this.audioCtx.createBiquadFilter();
 
      osc.type = 'square';
-     // Randomize pitch slightly for variation
      osc.frequency.setValueAtTime(150 + Math.random() * 50, t);
-
-     // Quick click envelope
      gainNode.gain.setValueAtTime(0, t);
      gainNode.gain.linearRampToValueAtTime(0.15, t + 0.01);
      gainNode.gain.exponentialRampToValueAtTime(0.01, t + 0.05);
 
-     // Filter to make it sound less harsh and more mechanical
      filter.type = 'bandpass';
      filter.frequency.setValueAtTime(1000, t);
      filter.Q.setValueAtTime(2, t);
-
      osc.connect(filter);
      filter.connect(gainNode);
      gainNode.connect(this.audioCtx.destination);
-
      osc.start(t);
      osc.stop(t + 0.06);
   }
@@ -100,40 +79,30 @@ class SoundEngine {
     if (this.isMuted) return;
     this.init();
     if (!this.audioCtx) return;
-
     const t = this.audioCtx.currentTime;
     const duration = 0.3;
     const bufferSize = this.audioCtx.sampleRate * duration;
     const buffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
     const data = buffer.getChannelData(0);
-
-    // Create white noise
-    for (let i = 0; i < bufferSize; i++) {
-        data[i] = Math.random() * 2 - 1;
-    }
+    for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
 
     const noiseSource = this.audioCtx.createBufferSource();
     noiseSource.buffer = buffer;
-
     const gainNode = this.audioCtx.createGain();
     const filter = this.audioCtx.createBiquadFilter();
 
-    // Glitchy volume envelope
     gainNode.gain.setValueAtTime(0, t);
     gainNode.gain.linearRampToValueAtTime(0.4, t + 0.02);
     gainNode.gain.setValueAtTime(0, t + 0.1);
     gainNode.gain.setValueAtTime(0.5, t + 0.15);
     gainNode.gain.exponentialRampToValueAtTime(0.01, t + duration);
 
-    // Highpass filter for that digital 'zzzt' sound
     filter.type = 'highpass';
     filter.frequency.setValueAtTime(3000, t);
     filter.frequency.linearRampToValueAtTime(500, t + duration);
-
     noiseSource.connect(filter);
     filter.connect(gainNode);
     gainNode.connect(this.audioCtx.destination);
-
     noiseSource.start(t);
   }
 
@@ -141,34 +110,84 @@ class SoundEngine {
      if (this.isMuted) return;
      this.init();
      if (!this.audioCtx) return;
-
      const t = this.audioCtx.currentTime;
-     
-     // A major chord for a positive/resolute sound
-     const frequencies = [440, 554.37, 659.25]; // A4, C#5, E5
-     
+     const frequencies = [440, 554.37, 659.25]; 
      frequencies.forEach((freq, i) => {
          const osc = this.audioCtx!.createOscillator();
          const gainNode = this.audioCtx!.createGain();
-
          osc.type = 'triangle';
          osc.frequency.setValueAtTime(freq, t);
-
-         // Stagger the attack slightly for an arpeggiated feel
          const delay = i * 0.1;
-         
          gainNode.gain.setValueAtTime(0, t + delay);
          gainNode.gain.linearRampToValueAtTime(0.3, t + delay + 0.1);
          gainNode.gain.exponentialRampToValueAtTime(0.01, t + delay + 2.5);
-
          osc.connect(gainNode);
          gainNode.connect(this.audioCtx!.destination);
-
          osc.start(t + delay);
          osc.stop(t + delay + 2.6);
      });
   }
+
+  // 🔥 NEW: APPLAUSE (तालियों की आवाज़)
+  public playApplause() {
+    if (this.isMuted) return;
+    this.init();
+    if (!this.audioCtx) return;
+    const t = this.audioCtx.currentTime;
+    const duration = 2.5;
+    const bufferSize = this.audioCtx.sampleRate * duration;
+    const buffer = this.audioCtx.createBuffer(1, bufferSize, this.audioCtx.sampleRate);
+    const data = buffer.getChannelData(0);
+    
+    // Creating "Crowd" noise
+    for (let i = 0; i < bufferSize; i++) {
+        data[i] = (Math.random() * 2 - 1) * 0.5;
+    }
+
+    const noiseSource = this.audioCtx.createBufferSource();
+    noiseSource.buffer = buffer;
+    
+    const filter = this.audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(800, t);
+    filter.Q.setValueAtTime(0.5, t);
+
+    const gainNode = this.audioCtx.createGain();
+    gainNode.gain.setValueAtTime(0, t);
+    gainNode.gain.linearRampToValueAtTime(0.6, t + 0.3); // Crowd swelling up
+    gainNode.gain.exponentialRampToValueAtTime(0.01, t + duration);
+
+    noiseSource.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(this.audioCtx.destination);
+    noiseSource.start(t);
+  }
+
+  // 🔥 NEW: BOOING (हूटिंग / डिमोशन साउंड)
+  public playBoo() {
+    if (this.isMuted) return;
+    this.init();
+    if (!this.audioCtx) return;
+    const t = this.audioCtx.currentTime;
+    
+    const osc = this.audioCtx.createOscillator();
+    const gainNode = this.audioCtx.createGain();
+    
+    osc.type = 'sawtooth';
+    // Downward pitch bend for "Boo / Disappointment"
+    osc.frequency.setValueAtTime(150, t);
+    osc.frequency.exponentialRampToValueAtTime(60, t + 1.5);
+    
+    gainNode.gain.setValueAtTime(0, t);
+    gainNode.gain.linearRampToValueAtTime(0.4, t + 0.2);
+    gainNode.gain.exponentialRampToValueAtTime(0.01, t + 1.5);
+    
+    osc.connect(gainNode);
+    gainNode.connect(this.audioCtx.destination);
+    
+    osc.start(t);
+    osc.stop(t + 1.5);
+  }
 }
 
-// Export a singleton instance
 export const soundEngine = new SoundEngine();

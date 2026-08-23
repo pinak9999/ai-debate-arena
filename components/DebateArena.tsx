@@ -31,7 +31,7 @@ import type {
   StockData,
 } from '@/hooks/useDebate';
 
-// ─── 🎥 CINEMATIC AGENT PANEL WITH LASER SCANNER ──────────────────────────
+// ─── 🎥 CINEMATIC AGENT PANEL WITH LASER SCANNER & CROWD ──────────────────────────
 
 interface AgentPanelProps {
   side:               'proponent' | 'opponent';
@@ -70,6 +70,7 @@ function AgentPanel({
 
   const containerRef = useRef<HTMLDivElement>(null);
 
+  // ऑटो-स्क्रॉल के लिए
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -78,6 +79,26 @@ function AgentPanel({
       el.scrollTop = el.scrollHeight;
     }
   }, [messages.length, streamingText]);
+
+  // 🔥 NEW: APPLAUSE EFFECT LOGIC (तालियों की आवाज़)
+  const applaudedMessages = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (messages.length > 0) {
+      const latestMessage = messages[messages.length - 1];
+      // Check if message is complete and has fallacies data
+      if (latestMessage.isComplete && fallacies[latestMessage.id]) {
+        // यह चेक करेगा कि क्या इस मैसेज पर पहले ही तालियां बज चुकी हैं
+        if (!applaudedMessages.current.has(latestMessage.id)) {
+          const stats = fallacies[latestMessage.id];
+          // अगर लॉजिक 90% या उससे ऊपर है और कोई पेनल्टी नहीं है, तो तालियां बजेंगी!
+          if (stats.logicScore >= 90 && stats.penalty === 0) {
+            soundEngine.playApplause();
+            applaudedMessages.current.add(latestMessage.id);
+          }
+        }
+      }
+    }
+  }, [messages, fallacies]);
 
   const latestMsgWithFallacy = [...messages].reverse().find(m => fallacies[m.id]);
   const latestStats = latestMsgWithFallacy ? fallacies[latestMsgWithFallacy.id] : null;
@@ -103,10 +124,9 @@ function AgentPanel({
       transition={{ type: "spring", stiffness: 100, damping: 20 }}
     >
       
-      {/* 🔥 NEW: HOLOGRAPHIC LASER SCANNER (जब एजेंट चुप है) 🔥 */}
+      {/* 🔥 HOLOGRAPHIC LASER SCANNER (जब एजेंट चुप है) 🔥 */}
       {!isActive && !isDebateOver && (
         <div className="absolute inset-0 z-50 pointer-events-none overflow-hidden rounded-2xl">
-          {/* Laser Line */}
           <motion.div 
             className="w-full h-[2px]"
             style={{ 
@@ -116,9 +136,7 @@ function AgentPanel({
             animate={{ y: ['0%', '560px', '0%'] }} 
             transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
           />
-          {/* Scan Overlay Glow */}
           <div className="absolute inset-0 opacity-10 animate-pulse" style={{ background: `linear-gradient(180deg, transparent, ${color}, transparent)` }} />
-          {/* Center Processing Icon */}
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-3 bg-black/50 p-4 rounded-xl backdrop-blur-md border" style={{ borderColor: `rgba(${rgb}, 0.2)` }}>
              <ScanLine className="w-8 h-8 animate-pulse" style={{ color }} />
              <span className="text-[10px] font-orbitron tracking-[0.3em] uppercase font-bold" style={{ color }}>
@@ -177,7 +195,11 @@ function AgentPanel({
             {latestStats?.hasFallacy && latestStats?.penalty > 0 && (
               <motion.div
                 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
-                onAnimationStart={() => soundEngine.playGlitch()}
+                // 🔥 NEW: PENALTY PAR GLITCH OR BOOING (हूटिंग) DONO SOUND
+                onAnimationStart={() => {
+                  soundEngine.playGlitch();
+                  soundEngine.playBoo(); 
+                }}
                 className="flex items-center gap-2 text-rose-400 bg-rose-500/10 px-2 py-1.5 rounded border border-rose-500/30 text-[10px] font-bold uppercase tracking-wider mb-1 animate-[shake_0.5s_ease-in-out]"
               >
                 <AlertTriangle className="w-3 h-3 shrink-0" />

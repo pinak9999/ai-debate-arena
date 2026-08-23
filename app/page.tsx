@@ -19,7 +19,7 @@ export default function Home() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false); 
   const savedDebateRef = useRef(false);
 
-  // 🔥 NEW: Boot-up Sequence States
+  // 🔥 Boot-up Sequence States
   const [isBooting, setIsBooting] = useState(false);
   const [bootText, setBootText] = useState<string[]>([]);
 
@@ -57,7 +57,6 @@ export default function Home() {
     }
   }, [debate.status, debate.scores, debate.topic, debate.subject, debate.language, debate.messages]);
 
-  // 🔥 NEW: Intercepted Handle Start for Boot Sequence
   const handleStart = (
     input: string, 
     rounds: number, 
@@ -80,20 +79,18 @@ export default function Home() {
 
     let step = 0;
     
-    // 2. Typewriter effect for terminal
     const interval = setInterval(() => {
       if (step < sequence.length) {
         setBootText(prev => [...prev, sequence[step]]);
         step++;
       } else {
         clearInterval(interval);
-        // 3. After boot sequence finishes, launch the actual debate
         setTimeout(() => {
           setIsBooting(false);
           debate.startDebate({ topic: input, totalRounds: rounds, subject, language: selectedLang, documentText });
-        }, 1200); // Hold final text for a moment
+        }, 1200); 
       }
-    }, 600); // 600ms gap between each line
+    }, 600); 
   };
 
   const handleNewDebate = () => {
@@ -110,9 +107,7 @@ export default function Home() {
 
   const handleDeleteDebate = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation(); 
-    
     setHistoryList(prev => prev.filter(item => item._id !== id && item.id !== id));
-    
     try {
       await fetch(`/api/debate-history?id=${id}`, { method: 'DELETE' });
     } catch (err) {
@@ -123,6 +118,9 @@ export default function Home() {
   const showHero    = debate.status === 'idle' && !isBooting;
   const showArena   = debate.status !== 'idle' && !isBooting;
   const showVerdict = debate.status === 'finished' && !!debate.scores && !isBooting;
+
+  // 🔥 TENSION MODE LOGIC: अगर राउंड 2 या उसके आगे है, और स्कोर का अंतर 15% से कम है, तो टेंशन मोड ON!
+  const isTensionMode = debate.status !== 'idle' && debate.status !== 'finished' && debate.currentRound > 1 && Math.abs(debate.audienceScore.pro - debate.audienceScore.opp) <= 15;
 
   return (
     <div className="relative min-h-screen bg-[#08090c] overflow-hidden font-sans">
@@ -137,11 +135,9 @@ export default function Home() {
             transition={{ duration: 0.8, ease: "easeInOut" }}
             className="fixed inset-0 z-[100] flex flex-col items-center justify-center bg-black backdrop-blur-3xl font-mono overflow-hidden"
           >
-            {/* Background Cyber Grid */}
             <div className="absolute inset-0 opacity-10 bg-[linear-gradient(rgba(0,212,255,0.2)_1px,transparent_1px),linear-gradient(90deg,rgba(0,212,255,0.2)_1px,transparent_1px)] bg-[size:40px_40px] pointer-events-none" />
             
             <div className="w-full max-w-3xl p-8 rounded-xl border border-cyan-500/20 bg-cyan-950/10 shadow-[0_0_80px_rgba(0,212,255,0.05)] relative">
-              
               <div className="flex items-center gap-3 mb-6 border-b border-cyan-500/30 pb-3">
                 <TerminalIcon className="w-6 h-6 text-cyan-400 animate-pulse" />
                 <span className="text-cyan-500 text-xs tracking-[0.3em] font-bold uppercase">System Terminal // Root Access</span>
@@ -160,7 +156,6 @@ export default function Home() {
                   </motion.div>
                 ))}
                 
-                {/* Blinking Cursor */}
                 {bootText.length < 5 && (
                   <motion.div 
                      animate={{ opacity: [1, 0, 1] }} 
@@ -170,7 +165,6 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Final Flash Warning */}
               <AnimatePresence>
                 {bootText.length === 5 && (
                   <motion.div
@@ -184,15 +178,11 @@ export default function Home() {
                   </motion.div>
                 )}
               </AnimatePresence>
-
             </div>
           </motion.div>
         )}
       </AnimatePresence>
-      {/* ─── BOOT OVERLAY END ─── */}
 
-
-      {/* ─── SIDEBAR OVERLAY COMPONENT ─── */}
       <Sidebar 
         isOpen={isSidebarOpen} 
         historyList={historyList} 
@@ -202,7 +192,6 @@ export default function Home() {
         onClose={() => setIsSidebarOpen(false)} 
       />
 
-      {/* ─── CREATIVE VERTICAL SIDE-TAB (EDGE HANDLE) ─── */}
       <button 
         onClick={() => setIsSidebarOpen(true)}
         className="fixed top-1/2 left-0 -translate-y-1/2 z-[40] flex flex-col items-center gap-3 py-5 px-1.5 bg-[#05070a]/90 backdrop-blur-xl border border-l-0 border-cyan-500/40 rounded-r-xl hover:bg-cyan-900/50 hover:px-2.5 transition-all duration-300 shadow-[0_0_20px_rgba(0,212,255,0.15)] group"
@@ -216,11 +205,10 @@ export default function Home() {
         </span>
       </button>
 
-      {/* ─── MAIN DEBATE AREA ─── */}
       <main className="relative h-screen overflow-y-auto w-full">
-        <ParticleBackground />
+        {/* 🔥 TENSION MODE PROP PASSED HERE 🔥 */}
+        <ParticleBackground isTensionMode={isTensionMode} />
 
-        {/* Cyber Grid Pattern */}
         <div
           className="fixed inset-0 pointer-events-none z-0 opacity-[0.25]"
           style={{
@@ -254,7 +242,7 @@ export default function Home() {
           {showArena && (
             <motion.div
               key="arena"
-              initial={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }} // 🔥 Arena opens with an epic zoom out
+              initial={{ opacity: 0, scale: 1.1, filter: "blur(10px)" }} 
               animate={{ opacity: 1, scale: 1, filter: "blur(0px)" }}
               transition={{ duration: 0.8, ease: "easeOut" }}
               className="min-h-screen pt-4 pb-20"
