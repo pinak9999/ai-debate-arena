@@ -3,7 +3,6 @@
 import { motion, type Variants } from 'framer-motion';
 import { Shield, Sword, Scale, BarChart2, Brain, Flame } from 'lucide-react';
 import { useTypewriter } from '@/hooks/useTypewriter';
-import { useState, useEffect } from 'react';
 import type { DebateMessage, UIArtifact, FallacyResult } from '@/hooks/useDebate';
 import {
   LineChart,
@@ -21,109 +20,19 @@ interface ChatBubbleProps {
   message:           DebateMessage;
   streamingText?:    string;
   isActiveStreaming?: boolean;
-  fallacyResult?:    FallacyResult; 
+  fallacyResult?:    FallacyResult; // 🔥 नया प्रॉप जोड़ा गया
 }
 
-// 🚀 ORIGINAL TYPING + NEW HIGHLIGHT LOGIC
 function TypewriterText({ text, side }: { text: string; side: 'proponent' | 'opponent' | 'judge' }) {
-  // तुम्हारा ओरिजिनल हुक बिल्कुल नहीं छेड़ा है!
   const { displayText, isComplete } = useTypewriter(text, { speed: 14 });
-  
-  const [spokenIndex, setSpokenIndex] = useState(-1);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-
-  useEffect(() => {
-    // जब तुम्हारी ओरिजिनल टाइपिंग खत्म हो जाएगी, तभी स्पीच चालू होगी
-    if (isComplete && text && typeof window !== 'undefined') {
-      const synth = window.speechSynthesis;
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      utterance.lang = 'hi-IN';
-      
-      if (side === 'proponent') {
-        utterance.pitch = 0.8;
-        utterance.rate = 1.05;
-      } else if (side === 'opponent') {
-        utterance.pitch = 1.3;
-        utterance.rate = 1.1;
-      } else {
-        utterance.pitch = 1.0;
-        utterance.rate = 1.0;
-      }
-      
-      utterance.onstart = () => setIsSpeaking(true);
-      utterance.onend = () => { 
-        setIsSpeaking(false); 
-        setSpokenIndex(-1); 
-      };
-      
-      // वर्ड बाउंड्री इवेंट
-      utterance.onboundary = (e) => {
-        if (e.name === 'word') {
-          setSpokenIndex(e.charIndex);
-        }
-      };
-
-      synth.cancel(); 
-      synth.speak(utterance);
-      
-      return () => {
-        synth.cancel();
-      };
-    }
-  }, [isComplete, text, side]);
-
-  // 1. जब तक टाइपिंग चल रही है, तुम्हारा ओरिजिनल कोड चलेगा
-  if (!isComplete) {
-    return (
-      <span className={side === 'opponent' ? 'cursor-blink-red' : 'cursor-blink'}>
-        {displayText}
-      </span>
-    );
-  }
-
-  // 2. टाइपिंग पूरी होने के बाद, जब AI बोलेगा तो हाईलाइट चलेगा
-  if (isSpeaking) {
-    let before = text;
-    let current = '';
-    let after = '';
-
-    if (spokenIndex >= 0) {
-      let endIdx = text.substring(spokenIndex).search(/[\s,।?!]/);
-      endIdx = endIdx === -1 ? text.length : spokenIndex + endIdx;
-      
-      before = text.slice(0, spokenIndex);
-      current = text.slice(spokenIndex, endIdx);
-      after = text.slice(endIdx);
-    }
-
-    const highlightClass = side === 'proponent' 
-      ? 'text-cyan-200 bg-cyan-900/50 shadow-[0_0_15px_rgba(0,212,255,0.6)]' 
-      : side === 'opponent' 
-        ? 'text-rose-200 bg-rose-900/50 shadow-[0_0_15px_rgba(255,45,85,0.6)]' 
-        : 'text-yellow-200 bg-yellow-900/50 shadow-[0_0_15px_rgba(255,214,10,0.6)]';
-
-    return (
-      <span className="transition-all duration-150">
-        <span className="opacity-70">{before}</span>
-        {current ? (
-          <motion.span 
-            initial={{ scale: 1 }} 
-            animate={{ scale: 1.15 }} 
-            className={`inline-block px-1 mx-0.5 rounded font-black ${highlightClass}`}
-          >
-            {current}
-          </motion.span>
-        ) : null}
-        <span className="opacity-70">{after}</span>
-      </span>
-    );
-  }
-
-  // 3. जब बोलना बंद हो जाएगा, तो वापस नॉर्मल टेक्स्ट दिखेगा
-  return <span>{text}</span>;
+  return (
+    <span className={!isComplete ? (side === 'opponent' ? 'cursor-blink-red' : 'cursor-blink') : ''}>
+      {displayText}
+    </span>
+  );
 }
 
+// 🚀 NEW: Generative UI Chart Component
 function GenerativeChart({ artifact, color }: { artifact: UIArtifact; color: string }) {
   if (!artifact || !artifact.data || artifact.data.length === 0) return null;
 
@@ -246,10 +155,12 @@ export default function ChatBubble({ message, streamingText, isActiveStreaming, 
             <>
               <TypewriterText text={message.text} side={message.speaker} />
               
+              {/* 🚀 Render Chart if UI Artifact exists */}
               {message.isComplete && message.uiArtifact && (
                 <GenerativeChart artifact={message.uiArtifact} color={color} />
               )}
 
+              {/* 🔥 NEW: Individual Logic & Aggression Scores for this specific message */}
               {message.isComplete && fallacyResult && (
                 <div className="mt-4 pt-3 border-t border-white/10 flex flex-wrap gap-4">
                   <div className="flex items-center gap-1.5 text-[10px] font-orbitron font-bold text-emerald-400">
