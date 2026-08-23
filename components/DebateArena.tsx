@@ -379,21 +379,44 @@ export default function DebateArena(props: DebateArenaProps) {
         <DownloadReportButton topic={topic} messages={messages} scores={scores} scoreHistory={scoreHistory} disabled={status !== 'finished'} />
       </div>
 
-      {/* 🔥 THE FIXED STOCK CHART SECTION WITH Z-INDEX AND LOADER 🔥 */}
+      {/* 🔥 THE BULLETPROOF STOCK CHART SECTION 🔥 */}
       {isStock && (status !== 'idle') && (
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="relative z-30 px-3 max-w-7xl mx-auto mt-4 w-full"
+          className="relative z-50 px-3 max-w-7xl mx-auto mt-4 w-full"
         >
-          {stockLoading && !stockData ? (
-             <div className="h-64 md:h-80 w-full flex flex-col items-center justify-center rounded-2xl border border-cyan-500/20 bg-[#050810]/80 backdrop-blur-xl shadow-[0_0_15px_rgba(0,212,255,0.1)]">
-                <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mb-3" />
-                <span className="text-cyan-400 font-orbitron text-[10px] tracking-widest uppercase">Fetching Live Market Data...</span>
-             </div>
-          ) : (
-             <StockChart data={stockData} loading={stockLoading} />
-          )}
+          <div className="w-full min-h-[350px] rounded-2xl bg-[#050810]/90 backdrop-blur-xl border border-cyan-500/30 shadow-[0_0_20px_rgba(0,212,255,0.15)] p-4 flex flex-col">
+            
+            {/* Header for Chart */}
+            <div className="flex items-center gap-2 mb-4 border-b border-cyan-500/20 pb-2">
+               <span className="text-cyan-400 font-orbitron text-xs tracking-widest uppercase font-bold">
+                 LIVE MARKET DATA // {topic}
+               </span>
+               {stockLoading && <Loader2 className="w-3 h-3 text-cyan-400 animate-spin" />}
+            </div>
+
+            {/* Chart Area */}
+            <div className="flex-1 w-full h-full flex flex-col items-center justify-center min-h-[280px]">
+              {stockLoading && !stockData ? (
+                <>
+                  <Loader2 className="w-8 h-8 text-cyan-400 animate-spin mb-3" />
+                  <span className="text-cyan-400 font-orbitron text-[10px] tracking-widest uppercase">Establishing connection to Exchange...</span>
+                </>
+              ) : !stockData ? (
+                <>
+                  <AlertTriangle className="w-8 h-8 text-yellow-500 mb-3" />
+                  <span className="text-yellow-500 font-orbitron text-[10px] tracking-widest uppercase">Live Market Data Unavailable for {topic}</span>
+                  <span className="text-white/30 text-[9px] mt-2">Check API limits or symbol name.</span>
+                </>
+              ) : (
+                <div className="w-full h-full min-h-[280px] relative z-50">
+                  <StockChart data={stockData} loading={stockLoading} />
+                </div>
+              )}
+            </div>
+            
+          </div>
         </motion.div>
       )}
 
