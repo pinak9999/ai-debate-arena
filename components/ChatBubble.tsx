@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
 import { motion, type Variants } from 'framer-motion';
 import { Shield, Sword, Scale, BarChart2, Brain, Flame } from 'lucide-react';
 import { useTypewriter } from '@/hooks/useTypewriter';
@@ -21,93 +20,19 @@ interface ChatBubbleProps {
   message:           DebateMessage;
   streamingText?:    string;
   isActiveStreaming?: boolean;
-  fallacyResult?:    FallacyResult; 
+  fallacyResult?:    FallacyResult; // 🔥 नया प्रॉप जोड़ा गया
 }
 
-// 🚀 ORIGINAL TYPING + 100% ZERO-LAG HIGHLIGHT SYNC
 function TypewriterText({ text, side }: { text: string; side: 'proponent' | 'opponent' | 'judge' }) {
-  // 1. तुम्हारा ओरिजिनल हुक बिना किसी बदलाव के
   const { displayText, isComplete } = useTypewriter(text, { speed: 14 });
-  
-  // 2. डायरेक्ट DOM अपडेट के लिए Ref (इससे रेंडर लैग नहीं होगा)
-  const textRef = useRef<HTMLSpanElement>(null);
-
-  useEffect(() => {
-    // जब टाइपिंग पूरी होगी, तभी बोलना चालू होगा
-    if (isComplete && text && typeof window !== 'undefined') {
-      const synth = window.speechSynthesis;
-      const utterance = new SpeechSynthesisUtterance(text);
-      
-      utterance.lang = 'hi-IN';
-      
-      if (side === 'proponent') {
-        utterance.pitch = 0.8;
-        utterance.rate = 1.05;
-      } else if (side === 'opponent') {
-        utterance.pitch = 1.3;
-        utterance.rate = 1.1;
-      } else {
-        utterance.pitch = 1.0;
-        utterance.rate = 1.0;
-      }
-      
-      const highlightColor = side === 'proponent' ? '#00d4ff' : side === 'opponent' ? '#ff2d55' : '#ffd60a';
-      const glow = `0 0 12px ${highlightColor}`;
-      
-      utterance.onstart = () => {
-         if (textRef.current) textRef.current.style.opacity = '0.7';
-      };
-      
-      // 🔥 MAGIC: डायरेक्ट DOM मैनिपुलेशन (बिना React State के 100% एक्यूरेट सिंक)
-      utterance.onboundary = (e) => {
-        if (e.name === 'word' && textRef.current) {
-          const charIndex = e.charIndex;
-          
-          // हिंदी और अंग्रेजी दोनों के वर्ड बाउंड्री (Space, Purna Viram, etc.) ढूँढना
-          let endIdx = text.substring(charIndex).search(/[\s,।?!.]/);
-          endIdx = endIdx === -1 ? text.length : charIndex + endIdx;
-          
-          const before = text.substring(0, charIndex);
-          const current = text.substring(charIndex, endIdx);
-          const after = text.substring(endIdx);
-          
-          // बिना री-रेंडर किए सीधा HTML अपडेट
-          textRef.current.innerHTML = 
-            `<span>${before}</span>` + 
-            `<span style="color: ${highlightColor}; text-shadow: ${glow}; font-weight: 900; font-size: 1.08em; transition: all 0.05s ease-out;">${current}</span>` + 
-            `<span>${after}</span>`;
-        }
-      };
-      
-      utterance.onend = () => {
-        if (textRef.current) {
-           textRef.current.innerHTML = text;
-           textRef.current.style.opacity = '1';
-        }
-      };
-
-      synth.cancel(); 
-      synth.speak(utterance);
-      
-      return () => { synth.cancel(); };
-    }
-  }, [isComplete, text, side]);
-
-  // जब तक टाइपिंग चल रही है, तुम्हारा ओरिजिनल लॉजिक दिखेगा
-  if (!isComplete) {
-    return (
-      <span className={side === 'opponent' ? 'cursor-blink-red' : 'cursor-blink'}>
-        {displayText}
-      </span>
-    );
-  }
-
-  // टाइपिंग पूरी होने के बाद यह स्पैन रेंडर होगा, जिसमें लाइव आवाज़ के साथ वर्ड्स चमकेंगे
-  return <span ref={textRef} className="transition-opacity duration-300">{text}</span>;
+  return (
+    <span className={!isComplete ? (side === 'opponent' ? 'cursor-blink-red' : 'cursor-blink') : ''}>
+      {displayText}
+    </span>
+  );
 }
 
-// बाकी का तुम्हारा सारा कोड 1% भी चेंज नहीं किया गया है ⬇️
-
+// 🚀 NEW: Generative UI Chart Component
 function GenerativeChart({ artifact, color }: { artifact: UIArtifact; color: string }) {
   if (!artifact || !artifact.data || artifact.data.length === 0) return null;
 
