@@ -2,13 +2,17 @@
 
 import { useState, useRef, type KeyboardEvent } from 'react';
 import { motion, type Variants } from 'framer-motion';
-// 🔥 यहाँ FileCode को ऐड किया है डॉक्यूमेंट अपलोड UI के लिए
-import { Zap, Brain, TrendingUp, Target, Flame, Sparkles, PlaySquare, FileCode } from 'lucide-react';
-import { ModeToggle } from '@/components/ModeToggle';
+// 🔥 Bot और Gamepad2 आइकॉन के साथ यहाँ नया इम्पॉर्ट जोड़ा गया है
+import { Zap, Brain, TrendingUp, Target, Flame, Sparkles, PlaySquare, FileCode, Bot, Gamepad2 } from 'lucide-react';
 import { DebateLanguage } from '@/hooks/useDebate';
 
 interface HeroSectionProps {
-  onStart: (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality' | 'youtube' | 'document', documentText?: string) => void;
+  onStart: (
+    input: string, 
+    rounds: number, 
+    subject: 'topic' | 'stock' | 'personality' | 'youtube' | 'document', 
+    documentText?: string
+  ) => void;
   mode: 'spectator' | 'player';
   setMode: (mode: 'spectator' | 'player') => void;
   selectedLang: DebateLanguage;
@@ -54,7 +58,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
   const [rounds, setRounds] = useState(3);
   const [launching, setLaunching] = useState(false);
   
-  // 🔥 Document Mode के लिए नए States
+  // Document Mode के लिए States
   const [documentText, setDocumentText] = useState('');
   const [fileName, setFileName] = useState('');
   const [uploadError, setUploadError] = useState('');
@@ -68,7 +72,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
   
   const examples = !isDocument ? EXAMPLES[subject as keyof typeof EXAMPLES] : [];
 
-  // 🔥 फाइल अपलोड हैंडल करने का लॉजिक
+  // फाइल अपलोड हैंडल करने का लॉजिक
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -76,7 +80,6 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
     setFileName(file.name);
     setUploadError('');
 
-    // अभी सिर्फ कोड/टेक्स्ट फाइल्स एलाऊ कर रहे हैं
     const validExtensions = ['js', 'ts', 'jsx', 'tsx', 'py', 'txt', 'json', 'html', 'css', 'md'];
     const fileExtension = file.name.split('.').pop()?.toLowerCase() || '';
 
@@ -90,7 +93,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
     reader.onload = (evt) => {
       if (typeof evt.target?.result === 'string') {
         setDocumentText(evt.target.result);
-        setTopic(file.name); // फाइल के नाम को ही टॉपिक बना देंगे
+        setTopic(file.name);
       }
     };
     reader.onerror = () => setUploadError('Error reading the file.');
@@ -128,7 +131,6 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
         setLaunching(false);
       }
     } else if (isDocument) {
-      // 🔥 Document Mode स्टार्ट करने का लॉजिक
       setTimeout(() => onStart(topic || 'Uploaded Document', rounds, 'document', documentText), 400);
     } else {
       setTimeout(() => onStart(topic.trim(), rounds, subject), 400);
@@ -185,8 +187,54 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
 
       {/* ── Header ── */}
       <header className="shrink-0 h-[8vh] min-h-[50px] flex items-center justify-between px-4 sm:px-6 z-20">
-        <ModeToggle mode={mode} setMode={setMode} disabled={disabled} />
-        <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-md">
+        
+        {/* 🔥 HIGH-CONTRAST INLINE MODE TOGGLE (100% Guaranteed Visual Selection) */}
+        <div className="flex items-center gap-1.5 p-1.5 bg-[#0a0f1d] border border-cyan-500/30 rounded-2xl shadow-[0_0_25px_rgba(0,0,0,0.8)] backdrop-blur-xl">
+          {/* SPECTATOR MODE BUTTON */}
+          <button
+            type="button"
+            onClick={() => setMode('spectator')}
+            disabled={disabled}
+            className={`relative flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-[10px] sm:text-[11px] font-orbitron font-black tracking-wider uppercase transition-all duration-300 ${
+              mode === 'spectator'
+                ? 'bg-gradient-to-r from-cyan-400 to-blue-500 text-black shadow-[0_0_20px_rgba(6,182,212,0.7)] border border-cyan-200 scale-[1.03]'
+                : 'bg-white/[0.03] text-slate-400 hover:text-white hover:bg-white/10 border border-white/5'
+            }`}
+          >
+            <Bot className={`w-4 h-4 shrink-0 ${mode === 'spectator' ? 'text-black fill-black/20' : 'text-cyan-400'}`} />
+            <span>Spectator <span className="hidden md:inline text-[9px] opacity-80">(AI vs AI)</span></span>
+            {mode === 'spectator' && (
+              <span className="flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded-full bg-black/30 text-black text-[8px] font-bold border border-black/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-black animate-ping" />
+                ON
+              </span>
+            )}
+          </button>
+
+          {/* PLAYER MODE BUTTON */}
+          <button
+            type="button"
+            onClick={() => setMode('player')}
+            disabled={disabled}
+            className={`relative flex items-center gap-2 px-3.5 sm:px-4 py-2 rounded-xl text-[10px] sm:text-[11px] font-orbitron font-black tracking-wider uppercase transition-all duration-300 ${
+              mode === 'player'
+                ? 'bg-gradient-to-r from-purple-500 to-pink-600 text-white shadow-[0_0_20px_rgba(168,85,247,0.7)] border border-purple-300 scale-[1.03]'
+                : 'bg-white/[0.03] text-slate-400 hover:text-white hover:bg-white/10 border border-white/5'
+            }`}
+          >
+            <Gamepad2 className={`w-4 h-4 shrink-0 ${mode === 'player' ? 'text-white' : 'text-purple-400'}`} />
+            <span>Player <span className="hidden md:inline text-[9px] opacity-80">(You vs AI)</span></span>
+            {mode === 'player' && (
+              <span className="flex items-center gap-1 ml-1 px-1.5 py-0.5 rounded-full bg-black/40 text-purple-200 text-[8px] font-bold border border-white/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-purple-300 animate-ping" />
+                ON
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* Language Selector */}
+        <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-md shadow-lg">
           <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest hidden sm:block">Language</span>
           <div className="h-3 w-px bg-white/20 hidden sm:block" />
           <select 
@@ -262,7 +310,6 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
               >
                 <PlaySquare className="w-3 h-3" /> YouTube
               </button>
-              {/* 🔥 नया Document Audit टैब */}
               <button
                 onClick={() => { setSubject('document'); setTopic(''); setDocumentText(''); setFileName(''); }}
                 className={`flex-1 flex items-center justify-center gap-1.5 py-1.5 sm:py-2 px-2 rounded-lg text-[9px] sm:text-[10px] font-bold tracking-widest uppercase transition-all whitespace-nowrap ${
@@ -278,7 +325,6 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
               <div className={`absolute -inset-0.5 bg-gradient-to-r ${themeColors.glow} rounded-xl blur opacity-20 transition duration-500`} />
               
               {isDocument ? (
-                // 🔥 File Uploader UI
                 <div className="relative w-full h-[80px] bg-[#0a0f1a] border border-dashed border-white/20 hover:border-purple-500/50 rounded-xl flex flex-col items-center justify-center transition-all cursor-pointer overflow-hidden">
                   <input 
                     type="file" 
@@ -301,7 +347,6 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
                   </div>
                 </div>
               ) : (
-                // Normal Textarea
                 <textarea
                   ref={textareaRef}
                   value={topic}
@@ -314,7 +359,7 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
               )}
             </div>
 
-            {/* Quick Examples (डॉक्यूमेंट मोड में ये नहीं दिखेंगे) */}
+            {/* Quick Examples */}
             {!isDocument && (
               <div className="overflow-x-auto whitespace-nowrap pb-1 scrollbar-hide shrink-0">
                 <div className="flex gap-2">
