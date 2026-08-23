@@ -9,7 +9,7 @@ import JudgeVerdict from '@/components/JudgeVerdict';
 import ParticleBackground from '@/components/ParticleBackground';
 import Sidebar from '@/components/Sidebar';
 import { useDebate, DebateLanguage } from '@/hooks/useDebate'; 
-import { ArgumentDAG } from '@/components/ArgumentDAG'; // अपना नया लॉजिक ट्री
+import { ArgumentDAG } from '@/components/ArgumentDAG'; 
 
 export default function Home() {
   const debate = useDebate();
@@ -145,7 +145,7 @@ export default function Home() {
             >
               <HeroSection 
                 onStart={handleStart} 
-                mode={debate.subject as any}
+                mode={debate.mode} // 🔥 यहाँ 'debate.subject' की जगह सही 'debate.mode' कर दिया है!
                 setMode={debate.setMode} 
                 selectedLang={selectedLang} 
                 setSelectedLang={setSelectedLang} 
