@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Shield, Sword, Wifi, Terminal, Users, QrCode, Brain, Flame, AlertTriangle, Gavel, Loader2 } from 'lucide-react';
+import { Shield, Sword, Wifi, Terminal, Users, QrCode, Brain, Flame, AlertTriangle, Gavel, Loader2, ScanLine } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
 // Components
@@ -31,7 +31,7 @@ import type {
   StockData,
 } from '@/hooks/useDebate';
 
-// ─── 🎥 CINEMATIC AGENT PANEL ─────────────────────────────────────────────
+// ─── 🎥 CINEMATIC AGENT PANEL WITH LASER SCANNER ──────────────────────────
 
 interface AgentPanelProps {
   side:               'proponent' | 'opponent';
@@ -82,16 +82,14 @@ function AgentPanel({
   const latestMsgWithFallacy = [...messages].reverse().find(m => fallacies[m.id]);
   const latestStats = latestMsgWithFallacy ? fallacies[latestMsgWithFallacy.id] : null;
 
-  // 🔥 3D CAMERA FOCUS LOGIC
   const isDebateOver = status === 'judging' || status === 'finished';
-  // If debate is over, both are fully visible. If running, only active is focused.
   const cinematicScale = isDebateOver ? 1 : (isActive ? 1.02 : 0.95);
-  const cinematicBlur = isDebateOver ? 'blur(0px)' : (isActive ? 'blur(0px)' : 'blur(4px)');
+  const cinematicBlur = isDebateOver ? 'blur(0px)' : (isActive ? 'blur(0px)' : 'blur(5px)');
   const cinematicOpacity = isDebateOver ? 1 : (isActive ? 1 : 0.5);
 
   return (
     <motion.div 
-      className="flex flex-col h-full min-h-0 rounded-2xl overflow-hidden border relative z-10"
+      className="flex flex-col h-full min-h-0 rounded-2xl overflow-hidden border relative z-10 bg-[#02050A]"
       style={{
         borderColor: `rgba(${rgb}, ${isActive || isDebateOver ? 0.3 : 0.05})`,
         boxShadow: isActive && !isDebateOver ? `0 0 50px rgba(${rgb}, 0.15), 0 0 100px rgba(${rgb}, 0.05)` : 'none',
@@ -104,9 +102,35 @@ function AgentPanel({
       }}
       transition={{ type: "spring", stiffness: 100, damping: 20 }}
     >
+      
+      {/* 🔥 NEW: HOLOGRAPHIC LASER SCANNER (जब एजेंट चुप है) 🔥 */}
+      {!isActive && !isDebateOver && (
+        <div className="absolute inset-0 z-50 pointer-events-none overflow-hidden rounded-2xl">
+          {/* Laser Line */}
+          <motion.div 
+            className="w-full h-[2px]"
+            style={{ 
+              background: color, 
+              boxShadow: `0 0 20px 3px ${color}` 
+            }}
+            animate={{ y: ['0%', '560px', '0%'] }} 
+            transition={{ duration: 3, repeat: Infinity, ease: "linear" }}
+          />
+          {/* Scan Overlay Glow */}
+          <div className="absolute inset-0 opacity-10 animate-pulse" style={{ background: `linear-gradient(180deg, transparent, ${color}, transparent)` }} />
+          {/* Center Processing Icon */}
+          <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 flex flex-col items-center gap-3 bg-black/50 p-4 rounded-xl backdrop-blur-md border" style={{ borderColor: `rgba(${rgb}, 0.2)` }}>
+             <ScanLine className="w-8 h-8 animate-pulse" style={{ color }} />
+             <span className="text-[10px] font-orbitron tracking-[0.3em] uppercase font-bold" style={{ color }}>
+               Scanning Patterns...
+             </span>
+          </div>
+        </div>
+      )}
+
       {/* ── Panel header ── */}
       <motion.div
-        className="flex items-center gap-3 px-4 py-3 border-b flex-shrink-0 backdrop-blur-md"
+        className="flex items-center gap-3 px-4 py-3 border-b flex-shrink-0 backdrop-blur-md relative z-40"
         style={{
           borderColor: `rgba(${rgb}, 0.18)`,
           background:  `linear-gradient(90deg, rgba(${rgb}, ${isActive ? 0.15 : 0.04}) 0%, rgba(5,8,16,0.9) 100%)`,
@@ -148,12 +172,11 @@ function AgentPanel({
 
       {/* ── LIVE STATS METERS ── */}
       {(messages.length > 0) && (
-        <div className="px-4 py-2 bg-black/60 border-b border-white/5 flex flex-col gap-2 flex-shrink-0 backdrop-blur-md">
+        <div className="px-4 py-2 bg-black/60 border-b border-white/5 flex flex-col gap-2 flex-shrink-0 backdrop-blur-md relative z-40">
           <AnimatePresence>
             {latestStats?.hasFallacy && latestStats?.penalty > 0 && (
               <motion.div
                 initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: 20 }}
-                // 🔥 PENALTY GLITCH SOUND & SHAKE
                 onAnimationStart={() => soundEngine.playGlitch()}
                 className="flex items-center gap-2 text-rose-400 bg-rose-500/10 px-2 py-1.5 rounded border border-rose-500/30 text-[10px] font-bold uppercase tracking-wider mb-1 animate-[shake_0.5s_ease-in-out]"
               >
@@ -187,7 +210,7 @@ function AgentPanel({
       )}
 
       {/* ── Messages scroll area ── */}
-      <div ref={containerRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 bg-[#02050A]/80 custom-scrollbar relative">
+      <div ref={containerRef} className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 bg-[#02050A]/80 custom-scrollbar relative z-30">
         <AnimatePresence mode="popLayout">
           {messages.map((msg) => {
             const isStreamingThis = msg.id === streamingMessageId;
