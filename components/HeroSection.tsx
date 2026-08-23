@@ -2,12 +2,10 @@
 
 import { useState, useRef, type KeyboardEvent } from 'react';
 import { motion, type Variants } from 'framer-motion';
-// 🔥 यहाँ Bot और Gamepad2 आइकॉन को ऐड किया है प्लेयर मोड UI के लिए
 import { Zap, Brain, TrendingUp, Target, Flame, Sparkles, PlaySquare, FileCode, Bot, Gamepad2 } from 'lucide-react';
 import { DebateLanguage } from '@/hooks/useDebate';
 
 interface HeroSectionProps {
-  // 🔥 यहाँ mode को भी onStart में जोड़ दिया है ताकि डिबेट इंजन को सीधा पता चल जाए
   onStart: (input: string, rounds: number, subject: 'topic' | 'stock' | 'personality' | 'youtube' | 'document', documentText?: string, mode?: 'spectator' | 'player') => void;
   mode: 'spectator' | 'player';
   setMode: (mode: 'spectator' | 'player') => void;
@@ -118,7 +116,6 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
         }
 
         const debatePrompt = `[YOUTUBE CONTEXT] Video Topic: ${data.topic} | Creator's Main Claims: ${data.claims}`;
-        // 🔥 यहाँ mode पास कर दिया है!
         setTimeout(() => onStart(debatePrompt, rounds, 'youtube', undefined, mode), 500);
 
       } catch (err) {
@@ -126,10 +123,8 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
         setLaunching(false);
       }
     } else if (isDocument) {
-      // 🔥 यहाँ mode पास कर दिया है!
       setTimeout(() => onStart(topic || 'Uploaded Document', rounds, 'document', documentText, mode), 400);
     } else {
-      // 🔥 यहाँ भी mode पास कर दिया है!
       setTimeout(() => onStart(topic.trim(), rounds, subject, undefined, mode), 400);
     }
   };
@@ -185,33 +180,38 @@ export default function HeroSection({ onStart, mode, setMode, selectedLang, setS
       {/* ── Header ── */}
       <header className="shrink-0 h-[8vh] min-h-[50px] flex items-center justify-between px-4 sm:px-6 z-20">
         
-        {/* 🔥 ModeToggle को हटाकर डायरेक्ट स्लीक बटन्स लगा दिए हैं */}
-        <div className="flex items-center p-1 bg-[#0a0f1a]/80 border border-white/10 rounded-full backdrop-blur-md">
+        {/* 🔥 IMPROVED MODE TOGGLE BUTTONS */}
+        <div className="flex items-center p-1 bg-[#0a0f1a]/80 border border-white/10 rounded-xl backdrop-blur-md shadow-lg">
           <button
             onClick={() => setMode('spectator')}
             disabled={disabled}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[9px] sm:text-[11px] font-bold tracking-widest uppercase transition-all duration-300 ${
+            className={`flex items-center gap-2 px-4 sm:px-5 py-2 rounded-lg text-[10px] sm:text-[12px] font-bold tracking-widest uppercase transition-all duration-300 ${
               mode === 'spectator' 
-                ? 'bg-[#1e293b] text-cyan-400 shadow-[0_0_15px_rgba(0,212,255,0.15)] border border-cyan-500/30' 
-                : 'text-gray-500 hover:text-gray-300 border border-transparent'
+                ? 'bg-blue-600 text-white shadow-[0_0_20px_rgba(37,99,235,0.4)] border border-blue-400/50 scale-105' 
+                : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border border-transparent'
             }`}
           >
-            <Bot className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Spectator <span className="hidden sm:inline">(AI vs AI)</span>
+            <Bot className={`w-4 h-4 sm:w-5 sm:h-5 ${mode === 'spectator' ? 'text-white' : 'text-blue-500'}`} /> 
+            <span>Spectator <span className="hidden sm:inline font-normal opacity-80">(AI vs AI)</span></span>
           </button>
+          
+          <div className="w-px h-6 bg-white/10 mx-1"></div> {/* Separator */}
+
           <button
             onClick={() => setMode('player')}
             disabled={disabled}
-            className={`flex items-center gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full text-[9px] sm:text-[11px] font-bold tracking-widest uppercase transition-all duration-300 ${
+            className={`flex items-center gap-2 px-4 sm:px-5 py-2 rounded-lg text-[10px] sm:text-[12px] font-bold tracking-widest uppercase transition-all duration-300 ${
               mode === 'player' 
-                ? 'bg-[#1e293b] text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.15)] border border-purple-500/30' 
-                : 'text-gray-500 hover:text-gray-300 border border-transparent'
+                ? 'bg-purple-600 text-white shadow-[0_0_20px_rgba(147,51,234,0.4)] border border-purple-400/50 scale-105' 
+                : 'text-gray-500 hover:text-gray-300 hover:bg-white/5 border border-transparent'
             }`}
           >
-            <Gamepad2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> Player <span className="hidden sm:inline">(You vs AI)</span>
+            <Gamepad2 className={`w-4 h-4 sm:w-5 sm:h-5 ${mode === 'player' ? 'text-white' : 'text-purple-500'}`} /> 
+            <span>Player <span className="hidden sm:inline font-normal opacity-80">(You vs AI)</span></span>
           </button>
         </div>
 
-        <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-md">
+        <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-3 py-1.5 backdrop-blur-md shadow-lg">
           <span className="text-[9px] font-bold text-gray-400 uppercase tracking-widest hidden sm:block">Language</span>
           <div className="h-3 w-px bg-white/20 hidden sm:block" />
           <select 
