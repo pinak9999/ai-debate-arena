@@ -1,14 +1,12 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-// 🔥 Gavel (हथौड़ा) और Loader2 नए इम्पोर्ट किए हैं 3D जज इफ़ेक्ट के लिए
-import { Shield, Sword, Wifi, Terminal, Users, QrCode, Brain, Flame, AlertTriangle, Gavel, Loader2 } from 'lucide-react';
-import { QRCodeSVG } from 'qrcode.react';
-
-// Components
 import AgentBrainGraph from './AgentBrainGraph';
 import { StockChart } from './StockChart';
+import { useEffect, useRef, useState } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
+// 🔥 Gavel और Loader2 को ऐड किया है 
+import { Shield, Sword, Wifi, Terminal, Users, QrCode, Brain, Flame, AlertTriangle, Gavel, Loader2 } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import ChatBubble from './ChatBubble';
 import RoundIndicator from './RoundIndicator';
 import { DebateGraph } from './DebateGraph';
@@ -17,7 +15,7 @@ import { DownloadReportButton } from './DownloadReportButton';
 import { FallacyBadge } from './FallacyBadge';
 import { FactCheckBadge } from './FactCheckBadge';
 
-// Sound Engine
+// 🔥 Sound Engine Import (Path check kar lena)
 import { soundEngine } from './utils/soundEngine';
 
 import type {
@@ -32,7 +30,8 @@ import type {
   StockData,
 } from '@/hooks/useDebate';
 
-// ─── AgentPanel ─────────────────────────────────────────────────────────────
+
+// ─── AgentPanel (TUMHARA ORIGINAL 100%) ────────────────────────────────────
 
 interface AgentPanelProps {
   side:               'proponent' | 'opponent';
@@ -44,7 +43,6 @@ interface AgentPanelProps {
   factChecks:         Record<string, FactCheckResult>;
   factCheckLoading:   Record<string, boolean>;
   subject?:           DebateSubject;
-  status:             DebateStatus; // 🔥 Status जोड़ दिया ताकि डिबेट खत्म होने पर ब्लर हट सके
 }
 
 function AgentPanel({
@@ -57,7 +55,6 @@ function AgentPanel({
   factChecks = {},
   factCheckLoading = {},
   subject = 'topic',
-  status,
 }: AgentPanelProps) {
   const isPro  = side === 'proponent';
   const color  = isPro ? '#00d4ff' : '#ff2d55';
@@ -65,27 +62,17 @@ function AgentPanel({
   
   const isStock = subject === 'stock';
   const isPersonality = subject === 'personality';
-  const isDocument = subject === 'document';
-  const isYoutube = subject === 'youtube';
   
   const panelTitle = isStock
     ? (isPro ? '🐂 Bull Case' : '🐻 Risk Analysis')
     : isPersonality
     ? (isPro ? '⚔️ Aggressive Analyst' : '🧘 The Philosopher')
-    : isDocument
-    ? (isPro ? '👨‍💻 Lead Developer' : '🕵️‍♂️ Senior Auditor')
-    : isYoutube
-    ? (isPro ? '👍 Loyal Defender' : '👎 Fact-Checker')
     : (isPro ? 'Proponent' : 'Opponent');
     
   const panelSubtitle = isStock
     ? (isPro ? 'Bullish Equity Analyst' : 'Risk Manager')
     : isPersonality
     ? (isPro ? 'Data-Driven & Assertive' : 'Ethics & Values-Driven')
-    : isDocument
-    ? (isPro ? 'Code Architect' : 'Vulnerability Hunter')
-    : isYoutube
-    ? (isPro ? 'Video Supporter' : 'Skeptical Critic')
     : `AI Agent #${isPro ? '001' : '002'}`;
 
   const containerRef = useRef<HTMLDivElement>(null);
@@ -102,31 +89,19 @@ function AgentPanel({
   const latestMsgWithFallacy = [...messages].reverse().find(m => fallacies[m.id]);
   const latestStats = latestMsgWithFallacy ? fallacies[latestMsgWithFallacy.id] : null;
 
-  // 🔥 FIX: डिबेट खत्म होने के बाद दोनों पैनल्स 100% विज़िबल रहेंगे (No Blur)
-  const isDebateOver = status === 'judging' || status === 'finished';
-  const isFocused = isActive || isDebateOver;
-
   return (
-    <motion.div 
-      className="flex flex-col h-full min-h-0 rounded-2xl overflow-hidden border relative"
-      style={{
-        borderColor: `rgba(${rgb}, ${isFocused ? 0.3 : 0.05})`,
-        boxShadow: isActive ? `0 0 50px rgba(${rgb}, 0.15), 0 0 100px rgba(${rgb}, 0.05)` : 'none',
-      }}
-      animate={{
-        scale: isFocused ? (isActive && !isDebateOver ? 1.02 : 1) : 0.95,
-        filter: isFocused ? 'blur(0px)' : 'blur(4px)',
-        opacity: isFocused ? 1 : 0.4,
-        rotateX: isFocused ? 0 : 2,
-      }}
-      transition={{ type: "spring", stiffness: 100, damping: 20 }}
-    >
+    <div className="flex flex-col h-full min-h-0">
       {/* ── Panel header ──────────────────────────────────────────────── */}
       <motion.div
-        className="flex items-center gap-3 px-4 py-3 border-b flex-shrink-0 relative z-10"
+        className="flex items-center gap-3 px-4 py-3 rounded-t-2xl border-b flex-shrink-0"
         style={{
           borderColor: `rgba(${rgb}, 0.18)`,
-          background:  `linear-gradient(90deg, rgba(${rgb}, ${isActive ? 0.15 : 0.04}) 0%, rgba(5,8,16,0.9) 100%)`,
+          background:  `rgba(${rgb}, 0.04)`,
+        }}
+        animate={{
+          boxShadow: isActive
+            ? `0 0 28px rgba(${rgb}, 0.18), inset 0 -1px 0 rgba(${rgb}, 0.3)`
+            : `inset 0 -1px 0 rgba(${rgb}, 0.12)`,
         }}
         transition={{ duration: 0.5 }}
       >
@@ -168,7 +143,7 @@ function AgentPanel({
         </span>
 
         <AnimatePresence>
-          {isActive && !isDebateOver && (
+          {isActive && (
             <motion.div
               key="live"
               initial={{ opacity: 0, scale: 0.8 }}
@@ -195,15 +170,16 @@ function AgentPanel({
 
       {/* ── LIVE STATS METERS ────────────── */}
       {(messages.length > 0) && (
-        <div className="px-4 py-2 bg-black/60 border-b border-white/5 flex flex-col gap-2 flex-shrink-0 relative z-10 backdrop-blur-md">
+        <div className="px-4 py-2 bg-black/40 border-b border-white/5 flex flex-col gap-2 flex-shrink-0">
           <AnimatePresence>
             {latestStats?.hasFallacy && latestStats?.penalty > 0 && (
               <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: 20 }}
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                // 🔥 Penalty Par Sound
                 onAnimationStart={() => soundEngine.playGlitch()}
-                className="flex items-center gap-2 text-rose-400 bg-rose-500/10 px-2 py-1.5 rounded border border-rose-500/30 text-[10px] font-bold uppercase tracking-wider mb-1 animate-[shake_0.5s_ease-in-out]"
+                className="flex items-center gap-2 text-rose-400 bg-rose-500/10 px-2 py-1.5 rounded border border-rose-500/30 text-[10px] font-bold uppercase tracking-wider mb-1"
               >
                 <AlertTriangle className="w-3 h-3 shrink-0" />
                 <span>Penalty: -{latestStats.penalty} pts ({latestStats.fallacyName})</span>
@@ -250,17 +226,16 @@ function AgentPanel({
       {/* ── Messages scroll area ───────────────────────────────────────── */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 bg-black/60 custom-scrollbar relative z-0"
+        className="flex-1 overflow-y-auto p-3 space-y-3 min-h-0 rounded-b-2xl custom-scrollbar"
+        style={{
+          background: `linear-gradient(180deg, rgba(${rgb}, 0.025) 0%, rgba(5,8,16,0.75) 100%)`,
+        }}
       >
-        <div className="absolute inset-0 flex items-center justify-center opacity-[0.02] pointer-events-none">
-          {isPro ? <Shield className="w-64 h-64 text-cyan-500" /> : <Sword className="w-64 h-64 text-rose-500" />}
-        </div>
-
         <AnimatePresence mode="popLayout">
           {messages.map((msg) => {
             const isStreamingThis = msg.id === streamingMessageId;
             return (
-              <div key={msg.id} className="relative z-10">
+              <div key={msg.id}>
                 <ChatBubble
                   message={msg}
                   streamingText={isStreamingThis ? streamingText : undefined}
@@ -287,15 +262,15 @@ function AgentPanel({
               className="w-8 h-8 rounded-full opacity-20"
               style={{ background: `radial-gradient(circle, ${color}, transparent)` }}
             />
-            <p className="text-white/20 text-xs tracking-wider font-orbitron uppercase">Awaiting Systems...</p>
+            <p className="text-white/20 text-xs tracking-wider">Awaiting arguments…</p>
           </motion.div>
         )}
       </div>
-    </motion.div>
+    </div>
   );
 }
 
-// ─── DebateArena ─────────────────────────────────────────────────────────────
+// ─── DebateArena (TUMHARA ORIGINAL) ──────────────────────────────────────────
 
 interface DebateArenaProps {
   messages:           DebateMessage[];
@@ -352,28 +327,15 @@ export default function DebateArena(props: DebateArenaProps) {
   const activeGlowSpeaker: 'proponent' | 'opponent' | null =
     currentSpeaker === 'judge' ? null : currentSpeaker;
 
-  // 🎬 SOUND TRIGGERS
+  const terminalContainerRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    if (currentRound > 1 && currentRound <= totalRounds && currentSpeaker === 'proponent') {
-      soundEngine.playBell(); 
+    const el = terminalContainerRef.current;
+    if (!el) return;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+    if (isNearBottom) {
+      el.scrollTop = el.scrollHeight;
     }
-  }, [currentRound, currentSpeaker, totalRounds]);
-
-  useEffect(() => {
-    if (status === 'judging') {
-      soundEngine.playJudge(); 
-    }
-  }, [status]);
-
-  const previousTextLength = useRef(0);
-  useEffect(() => {
-    if (streamingText && streamingText.length > previousTextLength.current) {
-      if (Math.random() > 0.6) {
-         soundEngine.playType();
-      }
-    }
-    previousTextLength.current = streamingText.length;
-  }, [streamingText]);
+  }, [agentLogs]);
 
   const [voteUrl, setVoteUrl] = useState('');
   useEffect(() => {
@@ -383,30 +345,26 @@ export default function DebateArena(props: DebateArenaProps) {
     }
   }, [currentRound, topic, status]);
 
-  // 🎬 DYNAMIC THEATER LIGHTING
-  const getTheaterLighting = () => {
-    if (status === 'judging') return 'bg-purple-900/20 shadow-[inset_0_0_500px_rgba(168,85,247,0.15)]';
-    if (currentSpeaker === 'proponent') return 'bg-cyan-900/20 shadow-[inset_0_0_500px_rgba(6,182,212,0.15)]';
-    if (currentSpeaker === 'opponent') return 'bg-rose-900/20 shadow-[inset_0_0_500px_rgba(239,68,68,0.15)]';
-    return 'bg-transparent';
-  };
+  // 🔥 SOUND TRIGGERS ADDED HERE
+  useEffect(() => {
+    if (currentRound > 1 && currentRound <= totalRounds && currentSpeaker === 'proponent') {
+      soundEngine.playBell();
+    }
+  }, [currentRound, currentSpeaker, totalRounds]);
+
+  useEffect(() => {
+    if (status === 'judging') {
+      soundEngine.playJudge();
+    }
+  }, [status]);
 
   return (
     <motion.div
-      className="relative z-10 w-full min-h-screen"
+      className="relative z-10 w-full"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.6 }}
     >
-      <style dangerouslySetInnerHTML={{__html: `
-        @keyframes shake {
-          0%, 100% { transform: translateX(0); }
-          25% { transform: translateX(-5px) rotate(-1deg); }
-          50% { transform: translateX(5px) rotate(1deg); }
-          75% { transform: translateX(-5px) rotate(-1deg); }
-        }
-      `}} />
-
       {/* ─── ⚖️ 3D MASSIVE JUDGE HOLOGRAM (EVALUATING PHASE) ─── */}
       <AnimatePresence>
         {status === 'judging' && (
@@ -417,8 +375,8 @@ export default function DebateArena(props: DebateArenaProps) {
             exit={{ opacity: 0, filter: "blur(20px)", scale: 1.5 }}
             transition={{ duration: 0.8 }}
           >
-            {/* Dark background overlay with heavy blur to create dramatic tension */}
-            <div className="absolute inset-0 bg-black/80 backdrop-blur-md" />
+            {/* Dark background overlay */}
+            <div className="absolute inset-0 bg-black/80 backdrop-blur-md pointer-events-auto" />
             
             <motion.div 
               className="relative flex flex-col items-center z-10"
@@ -427,10 +385,8 @@ export default function DebateArena(props: DebateArenaProps) {
               exit={{ scale: 2, opacity: 0 }}
               transition={{ type: "spring", damping: 15, stiffness: 100, duration: 1 }}
             >
-              {/* Glowing Aura */}
               <div className="absolute w-[600px] h-[600px] bg-purple-600/30 blur-[150px] rounded-full animate-pulse" />
               
-              {/* 3D Gavel Animation */}
               <motion.div 
                 animate={{ y: [0, -20, 0], rotateZ: [0, 5, -5, 0] }} 
                 transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
@@ -453,9 +409,7 @@ export default function DebateArena(props: DebateArenaProps) {
         )}
       </AnimatePresence>
 
-      {/* 🎬 THEATER SPOTLIGHT OVERLAY */}
-      <div className={`fixed inset-0 pointer-events-none transition-all duration-1000 ease-in-out z-[-1] ${getTheaterLighting()}`} />
-
+      {/* Sticky HUD */}
       <RoundIndicator
         currentRound={currentRound}
         totalRounds={totalRounds}
@@ -464,6 +418,7 @@ export default function DebateArena(props: DebateArenaProps) {
         topic={topic}
       />
 
+      {/* PDF download — top control strip */}
       <div className="px-3 max-w-7xl mx-auto flex flex-wrap items-center justify-end gap-3 mt-3">
         <DownloadReportButton
           topic={topic}
@@ -474,42 +429,61 @@ export default function DebateArena(props: DebateArenaProps) {
         />
       </div>
 
+      {/* ─── Financial War-Room — Live Stock Chart ────────────────── */}
       {isStock && (status !== 'idle') && (
         <div className="px-3 max-w-7xl mx-auto mt-4">
           <StockChart data={stockData} loading={stockLoading} />
         </div>
       )}
 
-      {/* ─── LIVE GRAPH + QR VOTING PANEL ────────────────── */}
+      {/* ─── LIVE GRAPH + QR VOTING PANEL (side by side) ────────────────── */}
       {status !== 'idle' && (
         <div className="px-3 max-w-7xl mx-auto mt-4">
           <div className="flex flex-col md:flex-row gap-4">
+
+            {/* Left: Live Score Graph */}
             <div className="flex-1">
               <DebateGraph data={scoreHistory} />
             </div>
 
-            <div className="w-full md:w-72 bg-[#050810]/80 backdrop-blur-xl border border-blue-500/20 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden shadow-[0_0_15px_rgba(0,212,255,0.1)]">
+            {/* Right: QR Code + Live Audience Sentiment */}
+            <div className="w-full md:w-72 bg-[#050810] border border-blue-500/20 rounded-xl p-4 flex flex-col items-center justify-center relative overflow-hidden shadow-[0_0_15px_rgba(0,212,255,0.1)]">
               <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-cyan-500 to-rose-500" />
+
               <div className="flex items-center gap-2 mb-3 text-white/80">
                 <Users className="w-4 h-4 text-emerald-400" />
                 <span className="text-[10px] uppercase tracking-widest font-bold">
                   Live Class Vote {audienceScore.total > 0 ? `(${audienceScore.total} Votes)` : ''}
                 </span>
               </div>
-              <div className="bg-white p-2 rounded-lg mb-3 shadow-[0_0_20px_rgba(255,255,255,0.3)]">
-                {voteUrl && <QRCodeSVG value={voteUrl} size={90} bgColor={'#ffffff'} fgColor={'#000000'} />}
+
+              {/* QR Code */}
+              <div className="bg-white p-2 rounded-lg mb-3 shadow-[0_0_10px_rgba(255,255,255,0.2)]">
+                {voteUrl && (
+                  <QRCodeSVG value={voteUrl} size={90} bgColor={'#ffffff'} fgColor={'#000000'} />
+                )}
               </div>
-              <p className="text-[9px] text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-1">
+              <p className="text-[9px] text-gray-500 uppercase tracking-widest mb-4 flex items-center gap-1">
                 <QrCode className="w-3 h-3" /> Scan to Vote
               </p>
+
+              {/* Audience Sentiment Bar */}
               <div className="w-full">
                 <div className="flex justify-between text-[10px] font-orbitron font-bold mb-1">
-                  <span className="text-cyan-400">{audienceScore.pro}% Pro</span>
-                  <span className="text-rose-400">{audienceScore.opp}% Opp</span>
+                  <span className="text-cyan-400">{audienceScore.pro}% {isStock ? 'Bull' : subject === 'personality' ? 'Analyst' : 'Pro'}</span>
+                  <span className="text-rose-400">{audienceScore.opp}% {isStock ? 'Bear' : subject === 'personality' ? 'Philosopher' : 'Opp'}</span>
                 </div>
                 <div className="w-full h-2 bg-gray-800 rounded-full overflow-hidden flex">
-                  <motion.div className="h-full bg-cyan-500" animate={{ width: `${audienceScore.pro}%` }} transition={{ type: 'spring' }} />
-                  <motion.div className="h-full bg-rose-500" animate={{ width: `${audienceScore.opp}%` }} transition={{ type: 'spring' }} />
+                  <motion.div
+                    className="h-full bg-cyan-500"
+                    animate={{ width: `${audienceScore.pro}%` }}
+                    transition={{ type: 'spring', bounce: 0.2 }}
+                  />
+                  <motion.div
+                    className="h-full bg-rose-500"
+                    animate={{ width: `${audienceScore.opp}%` }}
+                    transition={{ type: 'spring', bounce: 0.2 }}
+                  />
                 </div>
               </div>
             </div>
@@ -520,20 +494,70 @@ export default function DebateArena(props: DebateArenaProps) {
       {/* ─── Agent Brain Visual Flowchart ────────────────────────── */}
       {status !== 'idle' && (
         <div className="px-3 max-w-7xl mx-auto mt-4">
-          <div className="h-32 md:h-40 rounded-xl border border-gray-800/50 bg-[#050505]/80 backdrop-blur-xl overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,0.5)]">
+          <div className="h-32 md:h-40 rounded-xl border border-gray-800 bg-[#050505] overflow-hidden shadow-[inset_0_0_20px_rgba(0,0,0,1)]">
             <AgentBrainGraph currentSpeaker={currentSpeaker} status={status} />
           </div>
         </div>
       )}
 
+      {/* ─── Agent Trace Panel (Terminal UI) ────────────────────────── */}
+      {status !== 'idle' && agentLogs.length > 0 && (
+        <div className="px-3 max-w-7xl mx-auto mt-4">
+          <div className="rounded-xl border border-gray-800 bg-[#050505] p-3 font-mono text-[10px] sm:text-xs overflow-hidden flex flex-col h-32 md:h-40 shadow-[inset_0_0_20px_rgba(0,0,0,1)]">
+            <div className="flex items-center gap-2 mb-2 text-gray-500 border-b border-gray-800 pb-2">
+              <Terminal className="w-4 h-4 text-emerald-500" />
+              <span className="uppercase tracking-widest font-bold text-gray-400">Agent Trace (Live System Logs)</span>
+            </div>
+            <div
+              ref={terminalContainerRef}
+              className="flex-1 overflow-y-auto space-y-1 custom-scrollbar flex flex-col pr-2"
+            >
+              <AnimatePresence mode="popLayout">
+                {agentLogs.map((log) => {
+                  let colorClass = 'text-blue-400';
+                  if (log.type === 'fact') colorClass = 'text-emerald-400';
+                  if (log.type === 'fallacy') colorClass = 'text-yellow-400';
+                  if (log.type === 'judge') colorClass = 'text-purple-400';
+                  if (log.type === 'system') colorClass = 'text-gray-400';
+                  if (log.type === 'ui_render') colorClass = 'text-cyan-400';
+
+                  return (
+                    <motion.div
+                      key={log.id} initial={{ opacity: 0, x: -10 }} animate={{ opacity: 1, x: 0 }}
+                      className={`flex gap-2 ${colorClass}`}
+                    >
+                      <span className="text-gray-600 shrink-0">[{new Date(log.timestamp).toLocaleTimeString()}]</span>
+                      <span>{log.text}</span>
+                    </motion.div>
+                  );
+                })}
+              </AnimatePresence>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Player argument input */}
       <div className="px-3 max-w-7xl mx-auto mt-4">
         <PlayerInput waiting={waitingForPlayer} onSubmit={submitPlayerArgument} />
       </div>
 
-      {/* ─── 🎥 CINEMATIC SPLIT ARENA ────────────────────────── */}
+      {/* Split arena */}
       <div className="px-3 pb-6 max-w-7xl mx-auto">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mt-4 perspective-[1000px]">
-          <div style={{ minHeight: '560px' }}>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mt-3">
+
+          {/* Proponent / Bull */}
+          <motion.div
+            className="rounded-2xl overflow-hidden flex flex-col border border-white/5"
+            style={{ minHeight: '560px' }}
+            animate={{
+              boxShadow:
+                currentSpeaker === 'proponent'
+                  ? '0 0 50px rgba(0,212,255,0.2), 0 0 100px rgba(0,212,255,0.08)'
+                  : '0 0 25px rgba(0,212,255,0.04)',
+            }}
+            transition={{ duration: 0.55 }}
+          >
             <AgentPanel
               side="proponent"
               messages={proMessages}
@@ -544,10 +568,21 @@ export default function DebateArena(props: DebateArenaProps) {
               factChecks={factChecks}
               factCheckLoading={factCheckLoading}
               subject={subject}
-              status={status} // 🔥 Passed status
             />
-          </div>
-          <div style={{ minHeight: '560px' }}>
+          </motion.div>
+
+          {/* Opponent / Bear */}
+          <motion.div
+            className="rounded-2xl overflow-hidden flex flex-col border border-white/5"
+            style={{ minHeight: '560px' }}
+            animate={{
+              boxShadow:
+                currentSpeaker === 'opponent'
+                  ? '0 0 50px rgba(255,45,85,0.2), 0 0 100px rgba(255,45,85,0.08)'
+                  : '0 0 25px rgba(255,45,85,0.04)',
+            }}
+            transition={{ duration: 0.55 }}
+          >
             <AgentPanel
               side="opponent"
               messages={oppMessages}
@@ -558,9 +593,8 @@ export default function DebateArena(props: DebateArenaProps) {
               factChecks={factChecks}
               factCheckLoading={factCheckLoading}
               subject={subject}
-              status={status} // 🔥 Passed status
             />
-          </div>
+          </motion.div>
         </div>
       </div>
     </motion.div>
