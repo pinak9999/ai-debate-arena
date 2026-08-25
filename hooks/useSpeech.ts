@@ -11,10 +11,10 @@ interface QueueItem {
   resolve: () => void;
 }
 
-// Native TTS के लिए BCP-47 लैंग्वेज कोड्स
+// BCP-47 Language Codes for Native TTS
 const getLangCode = (langName: string = 'Hindi') => {
   switch (langName.toLowerCase()) {
-    case 'english':   return 'en-IN'; // या 'en-US'
+    case 'english':   return 'en-IN'; // or 'en-US'
     case 'gujarati':  return 'gu-IN';
     case 'marathi':   return 'mr-IN';
     case 'punjabi':   return 'pa-IN';
@@ -37,15 +37,15 @@ const getLangCode = (langName: string = 'Hindi') => {
 export function useSpeech() {
   const [isSpeaking, setIsSpeaking] = useState(false);
   const [isMuted, setIsMuted] = useState(false);
-  
+
   const isMutedRef = useRef(isMuted);
   const queueRef = useRef<QueueItem[]>([]);
   const processingRef = useRef(false);
 
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   const currentUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
-  
-  // Chrome TTS को बीच में रुकने से बचाने के लिए टाइमर
+
+  // Timer to prevent Chrome TTS from stopping mid-speech
   const keepAliveIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
@@ -61,7 +61,7 @@ export function useSpeech() {
 
   const processQueue = useCallback(async () => {
     if (processingRef.current) return;
-    
+
     const item = queueRef.current.shift();
     if (!item) {
       setIsSpeaking(false);
@@ -79,7 +79,7 @@ export function useSpeech() {
         return;
       }
 
-      // पूरा टेक्स्ट एक साथ ताकि फ्लो न टूटे
+      // Read the complete text at once so the flow doesn't break
       const cleanText = item.text.replace(/[*#_`~[\]]/g, '').trim();
       window.speechSynthesis.cancel();
       clearKeepAlive();
@@ -89,14 +89,14 @@ export function useSpeech() {
 
       const targetLangCode = getLangCode(item.language);
       utterance.lang = targetLangCode;
-      
+
       utterance.pitch = 1.0;
       utterance.rate = 1.0;
 
       const setVoiceAndSpeak = () => {
         const voices = window.speechSynthesis.getVoices();
         let selectedVoice = voices.find(v => v.lang === targetLangCode);
-        
+
         if (!selectedVoice) {
           selectedVoice = voices.find(v => v.lang.includes(targetLangCode.split('-')[0]));
         }
@@ -144,7 +144,7 @@ export function useSpeech() {
     };
 
     // 🔥 ELEVENLABS MULTILINGUAL V2 SUPPORTED LANGUAGES
-    // ये वो सभी 29 भाषाएँ हैं जिन्हें ElevenLabs परफेक्ट बोल सकता है
+    // These are the 29 languages perfectly supported by ElevenLabs
     const elevenLabsSupported = [
       'english', 'japanese', 'chinese', 'german', 'hindi', 'french', 
       'korean', 'portuguese', 'italian', 'spanish', 'indonesian', 
@@ -152,11 +152,11 @@ export function useSpeech() {
       'romanian', 'arabic', 'czech', 'greek', 'finnish', 'croatian', 
       'malay', 'slovak', 'danish', 'tamil', 'ukrainian', 'russian'
     ];
-    
+
     const isSupportedByElevenLabs = elevenLabsSupported.includes(item.language.toLowerCase());
 
     if (!isSupportedByElevenLabs) {
-      // अगर भाषा लिस्ट में नहीं है (जैसे: पंजाबी, मराठी, बंगाली), तो सीधे Native TTS चलाएँ
+      // If the language is not in the list (e.g., Punjabi, Marathi, Bengali), route directly to Native TTS
       console.log(`ElevenLabs doesn't perfectly support ${item.language}, routing to Native TTS...`);
       playNativeTTS();
       return;

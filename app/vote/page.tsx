@@ -14,7 +14,7 @@ function VotingComponent() {
   const [voted, setVoted] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  // 1. Spam Prevention: चेक करें कि क्या यूज़र पहले ही इस राउंड में वोट कर चुका है
+  // 1. Spam Prevention: Check if the user has already voted in this round
   useEffect(() => {
     const hasVoted = localStorage.getItem(`voted_round_${round}`);
     if (hasVoted) {
@@ -23,22 +23,22 @@ function VotingComponent() {
   }, [round]);
 
   const handleVote = async (side: 'proponent' | 'opponent') => {
-    if (loading) return; // अगर पहले से लोडिंग हो रही है, तो डबल क्लिक रोकें
+    if (loading) return; // Prevent double clicks if already loading
     
     setLoading(true);
     
-    // 2. Database में topic भी भेजें (ताकि भविष्य में पुराने डिबेट के वोट मिक्स न हों)
+    // 2. Send the topic to the database (to prevent mixing votes from older debates in the future)
     const { error } = await supabase
       .from('votes')
       .insert([{ side, round_number: round, topic: topic }]);
 
     if (!error) {
-      // वोट सक्सेसफुल होने पर लोकल स्टोरेज में सेव कर लें
+      // Save to local storage upon successful vote submission
       localStorage.setItem(`voted_round_${round}`, 'true');
       setVoted(true);
     } else {
       console.error('Vote submission failed:', error);
-      alert('वोट सबमिट नहीं हो पाया, कृपया पुनः प्रयास करें।');
+      alert('Vote submission failed, please try again.');
     }
     setLoading(false);
   };
@@ -48,7 +48,7 @@ function VotingComponent() {
       <div className="flex flex-col items-center justify-center min-h-screen bg-[#050810] text-white p-6 text-center">
         <CheckCircle className="w-16 h-16 text-emerald-400 mb-4 animate-bounce" />
         <h1 className="text-xl font-bold tracking-wider uppercase font-orbitron text-emerald-400">Vote Registered!</h1>
-        <p className="text-gray-400 text-sm mt-2">आपका वोट लाइव स्क्रीन पर भेज दिया गया है। अगले राउंड का इंतज़ार करें!</p>
+        <p className="text-gray-400 text-sm mt-2">Your vote has been sent to the live screen. Please wait for the next round!</p>
       </div>
     );
   }
@@ -66,7 +66,7 @@ function VotingComponent() {
 
       {/* Voting Cards */}
       <div className="flex-1 flex flex-col justify-center gap-4 max-w-md mx-auto w-full px-2">
-        <p className="text-center text-xs text-gray-500 uppercase tracking-wider mb-2">किसका आर्ग्युमेंट बेहतर लगा?</p>
+        <p className="text-center text-xs text-gray-500 uppercase tracking-wider mb-2">Whose argument was better?</p>
         
         {/* Proponent Button */}
         <button

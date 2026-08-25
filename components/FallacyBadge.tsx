@@ -9,7 +9,7 @@ interface FallacyBadgeProps {
 export function FallacyBadge({ result }: FallacyBadgeProps) {
   if (!result || !result.hasFallacy || !result.fallacyName) return null;
 
-  // 🔥 चेक करें कि क्या AI टॉपिक से भटका है (Tangent/Off-Topic)
+  // 🔥 Check if the AI deviated from the topic (Tangent/Off-Topic)
   const isOffTopic = 
     result.fallacyName.toLowerCase().includes('tangent') || 
     result.fallacyName.toLowerCase().includes('off-topic');

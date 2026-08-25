@@ -14,5 +14,5 @@ const DebateSchema = new mongoose.Schema({
   createdAt: { type: Date, default: Date.now }
 });
 
-// Next.js में बार-बार मॉडल कम्पाइल होने से रोकने का जुगाड़:
+// Workaround to prevent Mongoose model recompilation errors during Next.js hot reloads:
 export default mongoose.models.Debate || mongoose.model('Debate', DebateSchema);

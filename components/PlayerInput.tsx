@@ -14,7 +14,7 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
   const [isListening, setIsListening] = useState(false);
   const recognitionRef = useRef<any>(null);
   
-  // Stale State से बचने के लिए लेटेस्ट वैल्यू का Ref
+  // Ref for the latest value to prevent Stale State closures
   const currentValueRef = useRef('');
   useEffect(() => {
     currentValueRef.current = value;
@@ -74,8 +74,8 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
         const recognition = new SpeechRecognition();
         recognition.continuous = true;
         
-        // 🔥 MASTER FIX: interimResults को false कर दिया गया है। 
-        // अब यह तभी टाइप करेगा जब आप एक वाक्य बोलकर रुकेंगे। इससे Echo/Loop हमेशा के लिए खत्म हो जाएगा।
+        // 🔥 MASTER FIX: interimResults has been set to false. 
+        // Now it will only type when you pause after speaking a sentence. This eliminates the Echo/Loop issue permanently.
         recognition.interimResults = false; 
         
         recognition.lang = 'hi-IN';
@@ -83,12 +83,12 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
         recognition.onresult = (event: any) => {
           let sessionTranscript = '';
           
-          // इस सेशन के सारे पक्के (final) शब्दों को एक साथ जोड़ें
+          // Concatenate all finalized words of this session
           for (let i = 0; i < event.results.length; ++i) {
             sessionTranscript += event.results[i][0].transcript + ' ';
           }
           
-          // माइक चालू करने से पहले का टेक्स्ट + अभी बोला गया नया टेक्स्ट
+          // Text present before turning on the mic + the newly spoken text
           const fullText = (initialTextRef.current + ' ' + sessionTranscript).replace(/\s+/g, ' ').trim();
           setValue(fullText);
           currentValueRef.current = fullText;
@@ -101,7 +101,7 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
 
         recognition.onend = () => {
           setIsListening(false);
-          // माइक बंद होने पर जो भी लेटेस्ट टेक्स्ट है, उसे सेव कर लें
+          // Save the latest text when the mic turns off
           initialTextRef.current = currentValueRef.current.trim() ? currentValueRef.current.trim() + ' ' : '';
         };
 
@@ -120,7 +120,7 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
       if (typeof window !== 'undefined' && window.speechSynthesis) {
         window.speechSynthesis.cancel(); 
       }
-      // माइक चालू करने से पहले का टेक्स्ट सुरक्षित रख लें
+      // Save the existing text before activating the microphone
       initialTextRef.current = currentValueRef.current.trim() ? currentValueRef.current.trim() + ' ' : '';
       
       try {
@@ -238,7 +238,7 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
             }
           }}
           onKeyDown={handleKeyDown}
-          // जब माइक चल रहा हो तो टाइपिंग ब्लॉक कर दें ताकि कॉन्फ्लिक्ट न हो
+          // Block typing while the mic is active to prevent conflicts
           readOnly={isListening}
           placeholder={isListening ? "Listening to your voice..." : "Type your point here..."}
           rows={2}

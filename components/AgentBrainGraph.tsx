@@ -8,7 +8,7 @@ interface AgentBrainGraphProps {
   status: string;
 }
 
-// हर नोड की पोजीशन (Flowchart Layout)
+// Position of each node (Flowchart Layout)
 const NODES = [
   { id: 'proponent', label: 'Proponent', x: 60,  y: 70 },
   { id: 'factcheck', label: 'Fact-Check', x: 220, y: 30 },
@@ -29,12 +29,12 @@ const EDGES = [
 export default function AgentBrainGraph({ currentSpeaker, status }: AgentBrainGraphProps) {
   const [activeNode, setActiveNode] = useState<string | null>(null);
 
-  // करंट स्पीकर के हिसाब से सही नोड को ग्लो करना
+  // Highlight the correct node based on the current speaker
   useEffect(() => {
     if (status === 'debating' && currentSpeaker) {
       setActiveNode(currentSpeaker);
 
-      // थोड़ी देर बाद Fact-check/Fallacy नोड्स को भी हल्का सा चमकाओ (सिमुलेशन इफ़ेक्ट)
+      // Shortly after, lightly glow the Fact-check/Fallacy nodes (Simulation Effect)
       if (currentSpeaker === 'proponent' || currentSpeaker === 'opponent') {
         const t1 = setTimeout(() => setActiveNode('factcheck'), 900);
         const t2 = setTimeout(() => setActiveNode('fallacy'), 1400);
@@ -58,7 +58,7 @@ export default function AgentBrainGraph({ currentSpeaker, status }: AgentBrainGr
         <span>🧠 Agent Brain — Live Flow</span>
       </div>
       <svg viewBox="0 0 620 150" className="w-full h-full" preserveAspectRatio="xMidYMid meet">
-        {/* ── Edges (लाइनें) ── */}
+        {/* ── Edges (Connecting Lines) ── */}
         {EDGES.map((edge, i) => {
           const from = getNode(edge.from);
           const to = getNode(edge.to);
@@ -79,7 +79,7 @@ export default function AgentBrainGraph({ currentSpeaker, status }: AgentBrainGr
           );
         })}
 
-        {/* ── Nodes (गोले) ── */}
+        {/* ── Nodes (Circles) ── */}
         {NODES.map((node) => {
           const isActive = activeNode === node.id;
           const isJudge = node.id === 'judge';

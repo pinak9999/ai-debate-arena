@@ -128,7 +128,7 @@ class SoundEngine {
      });
   }
 
-  // 🔥 NEW: APPLAUSE (तालियों की आवाज़)
+  // 🔥 NEW: APPLAUSE (Crowd clapping sound)
   public playApplause() {
     if (this.isMuted) return;
     this.init();
@@ -163,7 +163,7 @@ class SoundEngine {
     noiseSource.start(t);
   }
 
-  // 🔥 NEW: BOOING (हूटिंग / डिमोशन साउंड)
+  // 🔥 NEW: BOOING (Crowd booing / Demotion sound)
   public playBoo() {
     if (this.isMuted) return;
     this.init();

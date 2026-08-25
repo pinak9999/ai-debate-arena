@@ -78,7 +78,7 @@ export function ArgumentDAG({ messages = [] }: ArgumentDAGProps) {
   if (messages.length === 0) {
     return (
       <div className="w-full h-[300px] flex items-center justify-center text-sm text-gray-400 border border-dashed border-gray-700 rounded-lg bg-gray-900/40 mt-6">
-        Debate शुरू होने के बाद लॉजिक ट्री यहाँ बनेगा...
+        The logic tree will be generated here once the debate starts...
       </div>
     );
   }

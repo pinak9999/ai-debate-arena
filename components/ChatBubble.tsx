@@ -20,7 +20,7 @@ interface ChatBubbleProps {
   message:           DebateMessage;
   streamingText?:    string;
   isActiveStreaming?: boolean;
-  fallacyResult?:    FallacyResult; // 🔥 नया प्रॉप जोड़ा गया
+  fallacyResult?:    FallacyResult; // 🔥 New prop added
 }
 
 function TypewriterText({ text, side }: { text: string; side: 'proponent' | 'opponent' | 'judge' }) {

@@ -119,7 +119,7 @@ export default function Home() {
   const showArena   = debate.status !== 'idle' && !isBooting;
   const showVerdict = debate.status === 'finished' && !!debate.scores && !isBooting;
 
-  // 🔥 TENSION MODE LOGIC: अगर राउंड 2 या उसके आगे है, और स्कोर का अंतर 15% से कम है, तो टेंशन मोड ON!
+  // 🔥 TENSION MODE LOGIC: If it's round 2 or beyond, and the score difference is less than or equal to 15%, activate Tension Mode!
   const isTensionMode = debate.status !== 'idle' && debate.status !== 'finished' && debate.currentRound > 1 && Math.abs(debate.audienceScore.pro - debate.audienceScore.opp) <= 15;
 
   return (

@@ -86,7 +86,7 @@ export default function Sidebar({ isOpen, historyList, onSelectDebate, onNewDeba
                     {item.topic}
                   </p>
                   
-                  {/* 🔥 ये रहा डिलीट बटन जिसे मैं भूल गया था! */}
+                  {/* 🔥 Delete Button */}
                   {onDeleteDebate && (
                     <button 
                       onClick={(e) => onDeleteDebate(item._id || item.id, e)}

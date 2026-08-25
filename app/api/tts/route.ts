@@ -4,8 +4,8 @@ export async function POST(req: NextRequest) {
   try {
     const { text, speaker } = await req.json();
 
-    // 🔥 यहाँ अपने ElevenLabs के Voice IDs डालें (ये बस डेमो IDs हैं)
-    // ElevenLabs के डैशबोर्ड से हिन्दी सपोर्ट करने वाली आवाज़ों की ID कॉपी करें
+    // 🔥 Insert your ElevenLabs Voice IDs here (these are just demo IDs)
+    // Copy the Voice IDs that support Hindi/Multilingual from your ElevenLabs dashboard
     let voiceId = '';
     if (speaker === 'proponent') {
       voiceId = 'pNInz6obpgDQGcFmaJgB'; // Proponent Voice ID
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'ElevenLabs API Key missing' }, { status: 500 });
     }
 
-    // ElevenLabs API Call (v2 model हिन्दी सपोर्ट करता है)
+    // ElevenLabs API Call (v2 model supports multilingual including Hindi)
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`, {
       method: 'POST',
       headers: {
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
       throw new Error(`ElevenLabs API Error: ${response.statusText}`);
     }
 
-    // Audio Buffer को सीधा Frontend पर भेजें
+    // Send the Audio Buffer directly to the Frontend
     const audioBuffer = await response.arrayBuffer();
     return new NextResponse(audioBuffer, {
       headers: {

@@ -2,16 +2,18 @@ import { NextRequest, NextResponse } from 'next/server';
 import mongoose from 'mongoose';
 import Debate from '../../models/Debate';
 
+// Helper function to establish MongoDB connection
 async function connectDB() {
   if (mongoose.connection.readyState === 0) {
     await mongoose.connect(process.env.MONGODB_URI || '');
   }
 }
 
-// सभी पुरानी डिबेट्स की लिस्ट लाने के लिए (GET)
+// Fetch a list of all past debates (GET)
 export async function GET() {
   try {
     await connectDB();
+    // Retrieve the 20 most recent debates sorted by creation date
     const debates = await Debate.find({}).sort({ createdAt: -1 }).limit(20);
     return NextResponse.json({ success: true, debates });
   } catch (error: any) {
@@ -19,13 +21,14 @@ export async function GET() {
   }
 }
 
-// नई डिबेट सेव करने के लिए (POST)
+// Save a newly completed debate (POST)
 export async function POST(req: NextRequest) {
   try {
     await connectDB();
     const body = await req.json();
     const { topic, mode, messages, winner } = body;
 
+    // Create and store the new debate record in the database
     const newDebate = await Debate.create({
       topic,
       mode: mode || 'topic',
@@ -38,13 +41,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: error.message }, { status: 500 });
   }
 }
-// किसी डिबेट को डिलीट करने के लिए (DELETE)
+
+// Delete a specific debate by its ID (DELETE)
 export async function DELETE(req: NextRequest) {
   try {
     await connectDB();
     const url = new URL(req.url);
     const id = url.searchParams.get('id');
     
+    // Check if ID exists and delete the corresponding record
     if (id) {
       await Debate.findByIdAndDelete(id);
       return NextResponse.json({ success: true });

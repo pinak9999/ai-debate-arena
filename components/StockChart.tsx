@@ -19,13 +19,13 @@ interface StockChartProps {
   loading?: boolean;
 }
 
-// 🔥 FIX: UTC टाइम को IST (Indian Standard Time) में कन्वर्ट करने का हेल्पर फंक्शन
+// 🔥 FIX: Helper function to convert UTC time to IST (Indian Standard Time)
 const convertToIST = (timeStr: string) => {
   if (!timeStr) return timeStr;
   
-  // अगर टाइम "03:45 am" फॉर्मेट में है, तो उसे पकड़ें
+  // Capture the time if it is in the "03:45 am" format
   const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(am|pm)$/i);
-  if (!match) return timeStr; // अगर फॉर्मेट अलग है, तो जैसा है वैसा ही लौटा दें
+  if (!match) return timeStr; // Return as is if the format is different
 
   let h = parseInt(match[1], 10);
   let m = parseInt(match[2], 10);
@@ -34,7 +34,7 @@ const convertToIST = (timeStr: string) => {
   if (isPm && h !== 12) h += 12;
   if (!isPm && h === 12) h = 0;
 
-  // 5 घंटे 30 मिनट जोड़ें (UTC -> IST)
+  // Add 5 hours and 30 minutes (UTC -> IST)
   m += 30;
   if (m >= 60) {
     m -= 60;
@@ -68,7 +68,7 @@ export function StockChart({ data, loading }: StockChartProps) {
   const isUp = data.change >= 0;
   const lineColor = isUp ? '#34d399' : '#ff2d55';
 
-  // 🔥 FIX: यहाँ मैप करते समय हमने convertToIST लगा दिया है
+  // 🔥 FIX: Applied convertToIST here while mapping the data
   const mergedData = data.prices.map((p, i) => ({
     time: convertToIST(p.time),
     price: p.price,
@@ -120,7 +120,7 @@ export function StockChart({ data, loading }: StockChartProps) {
       <div className="h-60 -ml-4">
         <ResponsiveContainer width="100%" height="100%">
           <ComposedChart data={mergedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-            {/* ग्रिड को और सटल (Subtle) बनाया है */}
+            {/* Made the grid more subtle */}
             <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" vertical={false} />
             <XAxis
               dataKey="time"

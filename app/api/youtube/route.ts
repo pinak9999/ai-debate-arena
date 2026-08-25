@@ -5,7 +5,7 @@ import { google } from '@ai-sdk/google';
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
-// यूट्यूब URL से Video ID निकालने का फंक्शन
+// Function to extract Video ID from a YouTube URL
 function extractVideoId(url: string) {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
   const match = url.match(regExp);
@@ -62,11 +62,11 @@ export async function POST(req: NextRequest) {
     }
 
     // 🔥 THE MASTER UPGRADE: 
-    // चूँकि 'groq/compound' की 70K लिमिट है, हम इसे 25,000 लेटर्स (आधी वीडियो) दे सकते हैं 
-    // ताकि लंबी वीडियो की समरी भी एकदम सटीक बने!
+    // We pass up to 25,000 characters to stay within token limits
+    // while ensuring the summary of long videos remains highly accurate!
     const limitedText = fullText.slice(0, 25000); 
 
-    // 2. AI से वीडियो की समरी और मेन दावे (Claims) निकलवाओ
+    // 2. Use AI to extract the video summary and main claims
     const prompt = `You are an expert content analyzer. Read this transcript of a YouTube video and extract the core topic and the top 3 claims/arguments made by the creator.
 
 Transcript:
@@ -87,7 +87,7 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
         prompt
       });
 
-      // 🔥 BULLETPROOF JSON PARSER: AI अगर एक्स्ट्रा टेक्स्ट दे दे, तो भी क्रैश नहीं होगा
+      // 🔥 BULLETPROOF JSON PARSER: Prevents crashes even if AI returns extra text
       let cleanJson = aiResponse.replace(/```json/gi, '').replace(/```/g, '').trim();
       const startIndex = cleanJson.indexOf('{');
       const endIndex = cleanJson.lastIndexOf('}');
@@ -101,7 +101,7 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
     } catch (aiError) {
       console.warn("⚠️ AI Summarization failed, triggering Safe Fallback:", aiError);
       
-      // 🔥 FALLBACK: अगर AI क्रैश हुआ, तो भी ऐप चलती रहेगी
+      // 🔥 FALLBACK: Ensures the app keeps running even if the AI fails
       result = {
         topic: "YouTube Video Analysis",
         claims: limitedText.slice(0, 400) + "... [Full transcript sent to backend for debate]"
@@ -117,6 +117,6 @@ Respond STRICTLY in JSON format without any markdown blocks or extra text:
 
   } catch (error: any) {
     console.error("Global YouTube API Error:", error.message || error);
-    return NextResponse.json({ error: `ASLI ERROR: ${error.message || String(error)}` }, { status: 500 });
+    return NextResponse.json({ error: `FATAL ERROR: ${error.message || String(error)}` }, { status: 500 });
   }
 }

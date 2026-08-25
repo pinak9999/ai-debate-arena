@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useSpeech } from './useSpeech';
 import { supabase } from '@/lib/supabase';
@@ -132,7 +134,7 @@ export interface UseDebateReturn {
   error: string | null;
   startDebate: (config: DebateConfig) => void;
   resetDebate: () => void;
-  loadPastDebate: (savedData: any) => void; // 🔥 यहाँ नया फंक्शन डिक्लेयर किया है
+  loadPastDebate: (savedData: any) => void; // 🔥 Declared new function here
   isSpeaking: boolean;
   isMuted: boolean;
   toggleMute: () => void;
@@ -376,7 +378,7 @@ export function useDebate(): UseDebateReturn {
     streamingTextRef.current = '';
   }, [stopSpeech, stopVotePolling]);
 
-  // 🔥 पुरानी डिबेट लोड करने का नया फंक्शन
+  // 🔥 New function to load a past debate
   const loadPastDebate = useCallback((savedData: any) => {
     abortControllerRef.current?.abort();
     stopSpeech();
@@ -397,10 +399,10 @@ export function useDebate(): UseDebateReturn {
     
     setMessages(savedData.messages || []);
     
-    // पुरानी डिबेट का वर्डिक्ट सेट करना
+    // Set the verdict for the past debate
     setScores({
       winner: savedData.winner || 'tie',
-      summary: 'यह आर्काइव (Archive) से लोड की गई पुरानी डिबेट है।',
+      summary: 'This is a past debate loaded from the Archive.',
       proponent: { logic: 85, creativity: 85, persuasion: 85, evidence: 85, overall: 85 },
       opponent: { logic: 85, creativity: 85, persuasion: 85, evidence: 85, overall: 85 }
     });
@@ -979,7 +981,7 @@ export function useDebate(): UseDebateReturn {
     error,
     startDebate,
     resetDebate,
-    loadPastDebate, // 🔥 इसे भी एक्सपोर्ट कर दिया गया है
+    loadPastDebate, // 🔥 Exported this as well
     isSpeaking,
     isMuted,
     toggleMute,
