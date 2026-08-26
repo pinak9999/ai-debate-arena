@@ -17,12 +17,40 @@ export function DownloadReportButton({
   scoreHistory,
   disabled,
 }: DownloadReportButtonProps) {
+
+  // 🛠️ Helper Function: ArrayBuffer को Base64 में कन्वर्ट करने के लिए
+  const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+    let binary = '';
+    const bytes = new Uint8Array(buffer);
+    const len = bytes.byteLength;
+    for (let i = 0; i < len; i++) {
+      binary += String.fromCharCode(bytes[i]);
+    }
+    return window.btoa(binary);
+  };
+
   const handleDownload = async () => {
     // Dynamic imports to prevent SSR issues
     const { jsPDF } = await import('jspdf');
     const autoTable = (await import('jspdf-autotable')).default;
     
     const doc = new jsPDF({ unit: 'pt', format: 'a4' });
+
+    // 🔥 MASTER FIX: कस्टम यूनिकोड फ़ॉन्ट (हिंदी/अन्य भाषाओं के लिए) लोड करना
+    try {
+      // ⚠️ बहुत ज़रूरी: Google Fonts से 'Noto Sans Devanagari' डाउनलोड करें
+      // और 'NotoSans-Regular.ttf' नाम से अपने public/fonts/ फोल्डर में रखें।
+      const response = await fetch('/fonts/NotoSans-Regular.ttf'); 
+      const buffer = await response.arrayBuffer();
+      const base64Font = arrayBufferToBase64(buffer);
+      
+      doc.addFileToVFS('NotoSans.ttf', base64Font);
+      doc.addFont('NotoSans.ttf', 'NotoSans', 'normal');
+      doc.setFont('NotoSans'); // अब डिफ़ॉल्ट फ़ॉन्ट NotoSans सेट हो गया है
+    } catch (error) {
+      console.warn("Custom font loading failed. Falling back to Helvetica.", error);
+      doc.setFont('helvetica');
+    }
     
     // ─── THEME COLORS ───
     const colors = {
@@ -39,11 +67,10 @@ export function DownloadReportButton({
     doc.rect(0, 0, doc.internal.pageSize.getWidth(), 80, 'F');
     
     doc.setTextColor(255, 255, 255);
-    doc.setFont('helvetica', 'bold');
     doc.setFontSize(22);
+    // कस्टम फ़ॉन्ट में 'bold' स्टाइल तभी काम करेगी जब Bold ttf भी लोड हो, इसलिए हम normal यूज़ कर रहे हैं।
     doc.text('AI DEBATE ARENA', 40, 40);
     
-    doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     doc.setTextColor(200, 200, 200);
     doc.text('FINANCIAL WAR-ROOM | OFFICIAL EVALUATION REPORT', 40, 60);
@@ -52,18 +79,14 @@ export function DownloadReportButton({
 
     // ─── META DATA ───
     doc.setTextColor(0, 0, 0);
-    doc.setFont('helvetica', 'bold');
     doc.setFontSize(12);
     doc.text('DEBATE TOPIC:', 40, y);
     
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(12);
     const topicLines = doc.splitTextToSize(topic || 'N/A', doc.internal.pageSize.getWidth() - 150);
     doc.text(topicLines, 140, y);
     
     y += topicLines.length * 15 + 10;
     
-    doc.setFont('helvetica', 'bold');
     doc.setFontSize(10);
     doc.setTextColor(150, 150, 150);
     doc.text(`GENERATED ON: ${new Date().toLocaleString('en-IN')}`, 40, y);
@@ -71,7 +94,6 @@ export function DownloadReportButton({
 
     // ─── JUDGE VERDICT TABLE ───
     if (scores) {
-      doc.setFont('helvetica', 'bold');
       doc.setFontSize(16);
       doc.setTextColor(...colors.primary);
       doc.text('JUDGE VERDICT & SCORE BREAKDOWN', 40, y);
@@ -83,7 +105,6 @@ export function DownloadReportButton({
       const winnerText = scores.winner.toUpperCase();
       const winnerColor = isProWinner ? colors.cyan : (isOppWinner ? colors.red : colors.gray);
 
-      // Score Breakdown Table
       autoTable(doc, {
         startY: y,
         head: [['Metric', 'Proponent (BULL)', 'Opponent (BEAR)']],
@@ -95,16 +116,16 @@ export function DownloadReportButton({
           ['OVERALL SCORE', scores.proponent.overall, scores.opponent.overall],
         ],
         theme: 'grid',
-        headStyles: { fillColor: colors.primary, textColor: 255, fontStyle: 'bold' },
+        styles: { font: 'NotoSans' }, // 🔥 टेबल के अंदर भी हिंदी फ़ॉन्ट अप्लाई करना
+        headStyles: { fillColor: colors.primary, textColor: 255 },
         columnStyles: {
-          0: { fontStyle: 'bold', cellWidth: 150 },
-          1: { halign: 'center', textColor: colors.cyan, fontStyle: 'bold' },
-          2: { halign: 'center', textColor: colors.red, fontStyle: 'bold' }
+          0: { cellWidth: 150 },
+          1: { halign: 'center', textColor: colors.cyan },
+          2: { halign: 'center', textColor: colors.red }
         },
         alternateRowStyles: { fillColor: [248, 250, 252] },
         margin: { left: 40, right: 40 },
         willDrawCell: function(data) {
-          // Highlight the Overall Score row
           if (data.row.index === 4) {
             doc.setFillColor(241, 245, 249);
           }
@@ -114,7 +135,6 @@ export function DownloadReportButton({
       y = (doc as any).lastAutoTable.finalY + 20;
 
       // Winner Badge
-      doc.setFont('helvetica', 'bold');
       doc.setFontSize(12);
       doc.setTextColor(0, 0, 0);
       doc.text('FINAL WINNER: ', 40, y);
@@ -124,7 +144,6 @@ export function DownloadReportButton({
       y += 20;
 
       // Summary
-      doc.setFont('helvetica', 'normal');
       doc.setFontSize(11);
       doc.setTextColor(50, 50, 50);
       const summaryLines = doc.splitTextToSize(`Summary: ${scores.summary}`, doc.internal.pageSize.getWidth() - 80);
@@ -134,7 +153,6 @@ export function DownloadReportButton({
 
     // ─── ROUND-BY-ROUND PERFORMANCE ───
     if (scoreHistory.length > 0) {
-      // Logic to extract penalties for remarks
       const getRemarksForRound = (roundNum: number) => {
         const roundMsgs = messages.filter(m => m.round === roundNum);
         let remarks: string[] = [];
@@ -154,7 +172,6 @@ export function DownloadReportButton({
         getRemarksForRound(pt.round)
       ]);
 
-      doc.setFont('helvetica', 'bold');
       doc.setFontSize(16);
       doc.setTextColor(...colors.primary);
       doc.text('ROUND-BY-ROUND TRAJECTORY', 40, y);
@@ -165,17 +182,17 @@ export function DownloadReportButton({
         head: [['Round', 'Proponent Score', 'Opponent Score', 'Remarks / Penalties']],
         body: roundBody,
         theme: 'striped',
+        styles: { font: 'NotoSans' }, // 🔥 यहाँ भी फ़ॉन्ट अप्लाई करें
         headStyles: { fillColor: [71, 85, 105], textColor: 255 },
         columnStyles: {
-          0: { fontStyle: 'bold', cellWidth: 80 },
-          1: { halign: 'center', textColor: colors.cyan, fontStyle: 'bold' },
-          2: { halign: 'center', textColor: colors.red, fontStyle: 'bold' },
-          3: { fontStyle: 'italic', textColor: colors.gray }
+          0: { cellWidth: 80 },
+          1: { halign: 'center', textColor: colors.cyan },
+          2: { halign: 'center', textColor: colors.red },
+          3: { textColor: colors.gray }
         },
         willDrawCell: function(data) {
           if (data.column.index === 3 && typeof data.cell.raw === 'string' && data.cell.raw.includes('Penalty')) {
-            doc.setTextColor(220, 38, 38); // Dark Red for penalties
-            doc.setFont('helvetica', 'bolditalic');
+            doc.setTextColor(220, 38, 38); 
           }
         },
         margin: { left: 40, right: 40 },
@@ -185,7 +202,6 @@ export function DownloadReportButton({
     }
 
     // ─── FULL TRANSCRIPT TABLE ───
-    doc.setFont('helvetica', 'bold');
     doc.setFontSize(16);
     doc.setTextColor(...colors.primary);
     doc.text('FULL DEBATE TRANSCRIPT', 40, y);
@@ -203,9 +219,10 @@ export function DownloadReportButton({
       head: [['Speaker', 'Argument / Statement']],
       body: transcriptBody,
       theme: 'grid',
+      styles: { font: 'NotoSans', cellPadding: 8, overflow: 'linebreak' }, // 🔥 हिंदी टेक्स्ट के लिए मुख्य स्टाइल
       headStyles: { fillColor: colors.primary, textColor: 255 },
       columnStyles: {
-        0: { cellWidth: 90, fontStyle: 'bold', halign: 'center', valign: 'middle' },
+        0: { cellWidth: 90, halign: 'center', valign: 'middle' },
         1: { cellWidth: 'auto', fontSize: 10 }
       },
       willDrawCell: function(data) {
@@ -216,16 +233,13 @@ export function DownloadReportButton({
             else doc.setTextColor(...colors.gray);
           }
         }
-        // Highlight penalties in transcript
         if (data.section === 'body' && data.column.index === 1) {
              const textStr = data.cell.raw as string;
              if (textStr.includes('SYSTEM NOTE: PENALTY APPLIED')) {
-                 // Subtle red background tint for rows with penalties
                  doc.setFillColor(254, 242, 242); 
              }
         }
       },
-      styles: { cellPadding: 8, overflow: 'linebreak' },
       margin: { left: 40, right: 40, bottom: 40 },
     });
 
@@ -233,7 +247,6 @@ export function DownloadReportButton({
     const pageCount = (doc as any).internal.getNumberOfPages();
     for (let i = 1; i <= pageCount; i++) {
       doc.setPage(i);
-      doc.setFont('helvetica', 'italic');
       doc.setFontSize(8);
       doc.setTextColor(150, 150, 150);
       doc.text(
