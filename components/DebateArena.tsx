@@ -304,7 +304,9 @@ export default function DebateArena(props: DebateArenaProps) {
   const [voteUrl, setVoteUrl] = useState('');
   useEffect(() => {
     if (typeof window !== 'undefined' && status !== 'idle') {
-      setVoteUrl(`${window.location.origin}/vote?topic=${encodeURIComponent(topic)}&round=${currentRound}`);
+      // 🔥 FIX: Generate a short, safe Topic ID for the URL to prevent encoding issues with large YouTube contexts
+      const safeTopicId = topic.substring(0, 50).replace(/[^a-zA-Z0-9 ]/g, "").trim();
+      setVoteUrl(`${window.location.origin}/vote?topic=${encodeURIComponent(safeTopicId)}&round=${currentRound}`);
     }
   }, [currentRound, topic, status]);
 

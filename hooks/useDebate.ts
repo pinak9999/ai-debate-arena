@@ -131,10 +131,11 @@ export interface UseDebateReturn {
   currentSpeaker: Speaker | null;
   scores: JudgeScores | null;
   topic: string;
+  safeTopicId: string; // 🔥 Exported the new safe ID for QR Code
   error: string | null;
   startDebate: (config: DebateConfig) => void;
   resetDebate: () => void;
-  loadPastDebate: (savedData: any) => void; // 🔥 Declared new function here
+  loadPastDebate: (savedData: any) => void;
   isSpeaking: boolean;
   isMuted: boolean;
   toggleMute: () => void;
@@ -273,6 +274,9 @@ export function useDebate(): UseDebateReturn {
 
   const { speak, stop: stopSpeech, isSpeaking, isMuted, toggleMute } = useSpeech();
 
+  // 🔥 FIX: Generate a short, URL-safe Topic ID from the massive topic text
+  const safeTopicId = topic.substring(0, 50).replace(/[^a-zA-Z0-9 ]/g, "").trim();
+
   const addLog = useCallback((text: string, type: AgentLog['type'] = 'info') => {
     setAgentLogs((prev) => [...prev, { id: generateId(), timestamp: Date.now(), text, type }]);
   }, []);
@@ -283,12 +287,15 @@ export function useDebate(): UseDebateReturn {
 
     if (!currentTopic) return;
 
+    // 🔥 FIX: Query database using the safe, cleaned ID
+    const safeTopicIdForQuery = currentTopic.substring(0, 50).replace(/[^a-zA-Z0-9 ]/g, "").trim();
+
     try {
       const { data, error: voteError } = await supabase
         .from('votes')
         .select('side')
         .eq('round_number', activeRound)
-        .eq('topic', currentTopic);
+        .eq('topic', safeTopicIdForQuery);
 
       if (voteError) {
         addLog(`[Live Vote] Poll error: ${voteError.message}`, 'system');
@@ -378,7 +385,6 @@ export function useDebate(): UseDebateReturn {
     streamingTextRef.current = '';
   }, [stopSpeech, stopVotePolling]);
 
-  // 🔥 New function to load a past debate
   const loadPastDebate = useCallback((savedData: any) => {
     abortControllerRef.current?.abort();
     stopSpeech();
@@ -978,10 +984,11 @@ export function useDebate(): UseDebateReturn {
     currentSpeaker,
     scores,
     topic,
+    safeTopicId, // 🔥 Exposed the new safe ID here
     error,
     startDebate,
     resetDebate,
-    loadPastDebate, // 🔥 Exported this as well
+    loadPastDebate,
     isSpeaking,
     isMuted,
     toggleMute,
