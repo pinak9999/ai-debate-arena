@@ -242,14 +242,46 @@ export function DownloadReportButton({
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
 
+        const FOOTER_SPACE_PT = 26; // reserved strip at the bottom of every page for the page number
+        const contentHeightPt = pageHeight - FOOTER_SPACE_PT;
+
         const imgWidth = pageWidth;
-        const pageCanvasHeight = (pageHeight * canvas.width) / imgWidth; // px-per-page in canvas space
+        const scaleFactor = canvas.width / wrapper.offsetWidth; // DOM px -> canvas px
+        const pageCanvasHeight = (contentHeightPt * canvas.width) / imgWidth; // max px-per-page in canvas space
+
+        // Collect "do not split" element boundaries (table rows + headings) in canvas-px space,
+        // so a page break never lands in the middle of a row/paragraph.
+        const wrapperRect = wrapper.getBoundingClientRect();
+        const noSplitEls = Array.from(wrapper.querySelectorAll('tr, h2'));
+        const boundaries = noSplitEls
+          .map((el) => {
+            const r = (el as HTMLElement).getBoundingClientRect();
+            return {
+              top: (r.top - wrapperRect.top) * scaleFactor,
+              bottom: (r.bottom - wrapperRect.top) * scaleFactor,
+            };
+          })
+          .sort((a, b) => a.top - b.top);
 
         let renderedHeight = 0;
         let pageIndex = 0;
 
         while (renderedHeight < canvas.height) {
-          const sliceHeight = Math.min(pageCanvasHeight, canvas.height - renderedHeight);
+          const desiredCut = Math.min(renderedHeight + pageCanvasHeight, canvas.height);
+
+          // If the desired cut line falls inside a row/heading, pull the cut back
+          // to the start of that element so the whole thing moves to the next page.
+          let safeCut = desiredCut;
+          for (const b of boundaries) {
+            if (b.top > renderedHeight && desiredCut > b.top && desiredCut < b.bottom) {
+              safeCut = b.top;
+              break;
+            }
+          }
+          // Guard against a single element being taller than one page (would loop forever otherwise)
+          if (safeCut <= renderedHeight) safeCut = desiredCut;
+
+          const sliceHeight = safeCut - renderedHeight;
 
           const pageCanvas = document.createElement('canvas');
           pageCanvas.width = canvas.width;
@@ -277,7 +309,7 @@ export function DownloadReportButton({
           if (pageIndex > 0) pdf.addPage();
           pdf.addImage(pageImgData, 'JPEG', 0, 0, imgWidth, pageImgHeight);
 
-          renderedHeight += sliceHeight;
+          renderedHeight = safeCut;
           pageIndex += 1;
         }
 
@@ -288,7 +320,7 @@ export function DownloadReportButton({
           pdf.setFont('helvetica', 'italic');
           pdf.setFontSize(8);
           pdf.setTextColor(150, 150, 150);
-          pdf.text(`Page ${i} of ${pageCount} | AI Debate Arena`, pageWidth / 2, pageHeight - 20, {
+          pdf.text(`Page ${i} of ${pageCount} | AI Debate Arena`, pageWidth / 2, pageHeight - 12, {
             align: 'center',
           });
         }
