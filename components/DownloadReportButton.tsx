@@ -18,7 +18,7 @@ export function DownloadReportButton({
   disabled,
 }: DownloadReportButtonProps) {
 
-  // 🛠️ Helper Function: ArrayBuffer को Base64 में कन्वर्ट करने के लिए
+  // 🛠️ Helper Function: Convert ArrayBuffer to Base64
   const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
     let binary = '';
     const bytes = new Uint8Array(buffer);
@@ -30,235 +30,247 @@ export function DownloadReportButton({
   };
 
   const handleDownload = async () => {
-    // Dynamic imports to prevent SSR issues
-    const { jsPDF } = await import('jspdf');
-    const autoTable = (await import('jspdf-autotable')).default;
-    
-    const doc = new jsPDF({ unit: 'pt', format: 'a4' });
-
-    // 🔥 MASTER FIX: कस्टम यूनिकोड फ़ॉन्ट (हिंदी/अन्य भाषाओं के लिए) लोड करना
     try {
-      // ⚠️ बहुत ज़रूरी: Google Fonts से 'Noto Sans Devanagari' डाउनलोड करें
-      // और 'NotoSans-Regular.ttf' नाम से अपने public/fonts/ फोल्डर में रखें।
-      const response = await fetch('/fonts/NotoSans-Regular.ttf'); 
-      const buffer = await response.arrayBuffer();
-      const base64Font = arrayBufferToBase64(buffer);
+      // Dynamic imports to prevent SSR issues
+      const { jsPDF } = await import('jspdf');
+      const autoTable = (await import('jspdf-autotable')).default;
       
-      doc.addFileToVFS('NotoSans.ttf', base64Font);
-      doc.addFont('NotoSans.ttf', 'NotoSans', 'normal');
-      doc.setFont('NotoSans'); // अब डिफ़ॉल्ट फ़ॉन्ट NotoSans सेट हो गया है
-    } catch (error) {
-      console.warn("Custom font loading failed. Falling back to Helvetica.", error);
-      doc.setFont('helvetica');
-    }
-    
-    // ─── THEME COLORS ───
-    const colors = {
-      primary: [15, 23, 42] as [number, number, number], // Dark Slate
-      cyan: [0, 212, 255] as [number, number, number],    // Proponent
-      red: [255, 45, 85] as [number, number, number],     // Opponent
-      gray: [100, 116, 139] as [number, number, number],  // Neutral
-    };
+      const doc = new jsPDF({ unit: 'pt', format: 'a4' });
 
-    let y = 50;
-
-    // ─── HEADER SECTION ───
-    doc.setFillColor(...colors.primary);
-    doc.rect(0, 0, doc.internal.pageSize.getWidth(), 80, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(22);
-    // कस्टम फ़ॉन्ट में 'bold' स्टाइल तभी काम करेगी जब Bold ttf भी लोड हो, इसलिए हम normal यूज़ कर रहे हैं।
-    doc.text('AI DEBATE ARENA', 40, 40);
-    
-    doc.setFontSize(10);
-    doc.setTextColor(200, 200, 200);
-    doc.text('FINANCIAL WAR-ROOM | OFFICIAL EVALUATION REPORT', 40, 60);
-
-    y = 110;
-
-    // ─── META DATA ───
-    doc.setTextColor(0, 0, 0);
-    doc.setFontSize(12);
-    doc.text('DEBATE TOPIC:', 40, y);
-    
-    const topicLines = doc.splitTextToSize(topic || 'N/A', doc.internal.pageSize.getWidth() - 150);
-    doc.text(topicLines, 140, y);
-    
-    y += topicLines.length * 15 + 10;
-    
-    doc.setFontSize(10);
-    doc.setTextColor(150, 150, 150);
-    doc.text(`GENERATED ON: ${new Date().toLocaleString('en-IN')}`, 40, y);
-    y += 40;
-
-    // ─── JUDGE VERDICT TABLE ───
-    if (scores) {
-      doc.setFontSize(16);
-      doc.setTextColor(...colors.primary);
-      doc.text('JUDGE VERDICT & SCORE BREAKDOWN', 40, y);
-      y += 15;
-
-      const isProWinner = scores.winner === 'proponent';
-      const isOppWinner = scores.winner === 'opponent';
-      
-      const winnerText = scores.winner.toUpperCase();
-      const winnerColor = isProWinner ? colors.cyan : (isOppWinner ? colors.red : colors.gray);
-
-      autoTable(doc, {
-        startY: y,
-        head: [['Metric', 'Proponent (BULL)', 'Opponent (BEAR)']],
-        body: [
-          ['Logic & Reasoning', scores.proponent.logic, scores.opponent.logic],
-          ['Evidence Quality', scores.proponent.evidence, scores.opponent.evidence],
-          ['Persuasion & Delivery', scores.proponent.persuasion, scores.opponent.persuasion],
-          ['Creativity', scores.proponent.creativity, scores.opponent.creativity],
-          ['OVERALL SCORE', scores.proponent.overall, scores.opponent.overall],
-        ],
-        theme: 'grid',
-        styles: { font: 'NotoSans' }, // 🔥 टेबल के अंदर भी हिंदी फ़ॉन्ट अप्लाई करना
-        headStyles: { fillColor: colors.primary, textColor: 255 },
-        columnStyles: {
-          0: { cellWidth: 150 },
-          1: { halign: 'center', textColor: colors.cyan },
-          2: { halign: 'center', textColor: colors.red }
-        },
-        alternateRowStyles: { fillColor: [248, 250, 252] },
-        margin: { left: 40, right: 40 },
-        willDrawCell: function(data) {
-          if (data.row.index === 4) {
-            doc.setFillColor(241, 245, 249);
-          }
+      // 🔥 MASTER FIX: Load custom Unicode font for multi-language support (e.g., Hindi)
+      try {
+        // ⚠️ CRUCIAL: Make sure 'NotoSans-Regular.ttf' exists in your public/fonts/ folder.
+        const response = await fetch('/fonts/NotoSans-Regular.ttf'); 
+        
+        // If the font file is missing, throw an error immediately to prevent HTML parsing crash
+        if (!response.ok) {
+          throw new Error(`Font file not found (Status: ${response.status}). Check public/fonts/ folder.`);
         }
-      });
-
-      y = (doc as any).lastAutoTable.finalY + 20;
-
-      // Winner Badge
-      doc.setFontSize(12);
-      doc.setTextColor(0, 0, 0);
-      doc.text('FINAL WINNER: ', 40, y);
-      doc.setTextColor(...winnerColor);
-      doc.text(winnerText, 130, y);
+        
+        const buffer = await response.arrayBuffer();
+        const base64Font = arrayBufferToBase64(buffer);
+        
+        doc.addFileToVFS('NotoSans.ttf', base64Font);
+        doc.addFont('NotoSans.ttf', 'NotoSans', 'normal');
+        doc.setFont('NotoSans'); // Set default font to NotoSans
+      } catch (error) {
+        console.warn("Custom font loading failed. Falling back to Helvetica.", error);
+        doc.setFont('helvetica');
+      }
       
-      y += 20;
-
-      // Summary
-      doc.setFontSize(11);
-      doc.setTextColor(50, 50, 50);
-      const summaryLines = doc.splitTextToSize(`Summary: ${scores.summary}`, doc.internal.pageSize.getWidth() - 80);
-      doc.text(summaryLines, 40, y);
-      y += summaryLines.length * 15 + 40;
-    }
-
-    // ─── ROUND-BY-ROUND PERFORMANCE ───
-    if (scoreHistory.length > 0) {
-      const getRemarksForRound = (roundNum: number) => {
-        const roundMsgs = messages.filter(m => m.round === roundNum);
-        let remarks: string[] = [];
-        roundMsgs.forEach(m => {
-          const penaltyMatch = m.text.match(/\[SYSTEM NOTE: PENALTY APPLIED.*?\]/i);
-          if (penaltyMatch) {
-            remarks.push(`${m.speaker.toUpperCase()}: Penalty!`);
-          }
-        });
-        return remarks.length > 0 ? remarks.join(', ') : 'Clean Round';
+      // ─── THEME COLORS ───
+      const colors = {
+        primary: [15, 23, 42] as [number, number, number], // Dark Slate
+        cyan: [0, 212, 255] as [number, number, number],    // Proponent
+        red: [255, 45, 85] as [number, number, number],     // Opponent
+        gray: [100, 116, 139] as [number, number, number],  // Neutral
       };
 
-      const roundBody = scoreHistory.map((pt) => [
-        `Round ${pt.round}`,
-        pt.pro,
-        pt.opp,
-        getRemarksForRound(pt.round)
-      ]);
+      let y = 50;
 
+      // ─── HEADER SECTION ───
+      doc.setFillColor(...colors.primary);
+      doc.rect(0, 0, doc.internal.pageSize.getWidth(), 80, 'F');
+      
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(22);
+      // Note: 'bold' style only works if a separate Bold.ttf is loaded. Using 'normal' here.
+      doc.text('AI DEBATE ARENA', 40, 40);
+      
+      doc.setFontSize(10);
+      doc.setTextColor(200, 200, 200);
+      doc.text('FINANCIAL WAR-ROOM | OFFICIAL EVALUATION REPORT', 40, 60);
+
+      y = 110;
+
+      // ─── META DATA ───
+      doc.setTextColor(0, 0, 0);
+      doc.setFontSize(12);
+      doc.text('DEBATE TOPIC:', 40, y);
+      
+      const topicLines = doc.splitTextToSize(topic || 'N/A', doc.internal.pageSize.getWidth() - 150);
+      doc.text(topicLines, 140, y);
+      
+      y += topicLines.length * 15 + 10;
+      
+      doc.setFontSize(10);
+      doc.setTextColor(150, 150, 150);
+      doc.text(`GENERATED ON: ${new Date().toLocaleString('en-IN')}`, 40, y);
+      y += 40;
+
+      // ─── JUDGE VERDICT TABLE ───
+      if (scores) {
+        doc.setFontSize(16);
+        doc.setTextColor(...colors.primary);
+        doc.text('JUDGE VERDICT & SCORE BREAKDOWN', 40, y);
+        y += 15;
+
+        const isProWinner = scores.winner === 'proponent';
+        const isOppWinner = scores.winner === 'opponent';
+        
+        const winnerText = scores.winner.toUpperCase();
+        const winnerColor = isProWinner ? colors.cyan : (isOppWinner ? colors.red : colors.gray);
+
+        autoTable(doc, {
+          startY: y,
+          head: [['Metric', 'Proponent (BULL)', 'Opponent (BEAR)']],
+          body: [
+            ['Logic & Reasoning', scores.proponent.logic, scores.opponent.logic],
+            ['Evidence Quality', scores.proponent.evidence, scores.opponent.evidence],
+            ['Persuasion & Delivery', scores.proponent.persuasion, scores.opponent.persuasion],
+            ['Creativity', scores.proponent.creativity, scores.opponent.creativity],
+            ['OVERALL SCORE', scores.proponent.overall, scores.opponent.overall],
+          ],
+          theme: 'grid',
+          styles: { font: 'NotoSans' }, // 🔥 Apply custom font inside the table
+          headStyles: { fillColor: colors.primary, textColor: 255 },
+          columnStyles: {
+            0: { cellWidth: 150 },
+            1: { halign: 'center', textColor: colors.cyan },
+            2: { halign: 'center', textColor: colors.red }
+          },
+          alternateRowStyles: { fillColor: [248, 250, 252] },
+          margin: { left: 40, right: 40 },
+          willDrawCell: function(data) {
+            if (data.row.index === 4) {
+              doc.setFillColor(241, 245, 249);
+            }
+          }
+        });
+
+        y = (doc as any).lastAutoTable.finalY + 20;
+
+        // Winner Badge
+        doc.setFontSize(12);
+        doc.setTextColor(0, 0, 0);
+        doc.text('FINAL WINNER: ', 40, y);
+        doc.setTextColor(...winnerColor);
+        doc.text(winnerText, 130, y);
+        
+        y += 20;
+
+        // Summary
+        doc.setFontSize(11);
+        doc.setTextColor(50, 50, 50);
+        const summaryLines = doc.splitTextToSize(`Summary: ${scores.summary}`, doc.internal.pageSize.getWidth() - 80);
+        doc.text(summaryLines, 40, y);
+        y += summaryLines.length * 15 + 40;
+      }
+
+      // ─── ROUND-BY-ROUND PERFORMANCE ───
+      if (scoreHistory.length > 0) {
+        const getRemarksForRound = (roundNum: number) => {
+          const roundMsgs = messages.filter(m => m.round === roundNum);
+          let remarks: string[] = [];
+          roundMsgs.forEach(m => {
+            const penaltyMatch = m.text.match(/\[SYSTEM NOTE: PENALTY APPLIED.*?\]/i);
+            if (penaltyMatch) {
+              remarks.push(`${m.speaker.toUpperCase()}: Penalty!`);
+            }
+          });
+          return remarks.length > 0 ? remarks.join(', ') : 'Clean Round';
+        };
+
+        const roundBody = scoreHistory.map((pt) => [
+          `Round ${pt.round}`,
+          pt.pro,
+          pt.opp,
+          getRemarksForRound(pt.round)
+        ]);
+
+        doc.setFontSize(16);
+        doc.setTextColor(...colors.primary);
+        doc.text('ROUND-BY-ROUND TRAJECTORY', 40, y);
+        y += 15;
+
+        autoTable(doc, {
+          startY: y,
+          head: [['Round', 'Proponent Score', 'Opponent Score', 'Remarks / Penalties']],
+          body: roundBody,
+          theme: 'striped',
+          styles: { font: 'NotoSans' }, // 🔥 Apply custom font inside this table too
+          headStyles: { fillColor: [71, 85, 105], textColor: 255 },
+          columnStyles: {
+            0: { cellWidth: 80 },
+            1: { halign: 'center', textColor: colors.cyan },
+            2: { halign: 'center', textColor: colors.red },
+            3: { textColor: colors.gray }
+          },
+          willDrawCell: function(data) {
+            if (data.column.index === 3 && typeof data.cell.raw === 'string' && data.cell.raw.includes('Penalty')) {
+              doc.setTextColor(220, 38, 38); 
+            }
+          },
+          margin: { left: 40, right: 40 },
+        });
+
+        y = (doc as any).lastAutoTable.finalY + 40;
+      }
+
+      // ─── FULL TRANSCRIPT TABLE ───
       doc.setFontSize(16);
       doc.setTextColor(...colors.primary);
-      doc.text('ROUND-BY-ROUND TRAJECTORY', 40, y);
+      doc.text('FULL DEBATE TRANSCRIPT', 40, y);
       y += 15;
+
+      const transcriptBody = messages.map(m => {
+        const isPro = m.speaker === 'proponent';
+        const isOpp = m.speaker === 'opponent';
+        const label = isPro ? 'PROPONENT' : (isOpp ? 'OPPONENT' : 'JUDGE');
+        return [`[R${m.round}]\n${label}`, m.text];
+      });
 
       autoTable(doc, {
         startY: y,
-        head: [['Round', 'Proponent Score', 'Opponent Score', 'Remarks / Penalties']],
-        body: roundBody,
-        theme: 'striped',
-        styles: { font: 'NotoSans' }, // 🔥 यहाँ भी फ़ॉन्ट अप्लाई करें
-        headStyles: { fillColor: [71, 85, 105], textColor: 255 },
+        head: [['Speaker', 'Argument / Statement']],
+        body: transcriptBody,
+        theme: 'grid',
+        styles: { font: 'NotoSans', cellPadding: 8, overflow: 'linebreak' }, // 🔥 Primary style for multi-language transcript text
+        headStyles: { fillColor: colors.primary, textColor: 255 },
         columnStyles: {
-          0: { cellWidth: 80 },
-          1: { halign: 'center', textColor: colors.cyan },
-          2: { halign: 'center', textColor: colors.red },
-          3: { textColor: colors.gray }
+          0: { cellWidth: 90, halign: 'center', valign: 'middle' },
+          1: { cellWidth: 'auto', fontSize: 10 }
         },
         willDrawCell: function(data) {
-          if (data.column.index === 3 && typeof data.cell.raw === 'string' && data.cell.raw.includes('Penalty')) {
-            doc.setTextColor(220, 38, 38); 
+          if (data.section === 'body' && data.column.index === 0) {
+            if (data.cell.raw && typeof data.cell.raw === 'string') {
+              if (data.cell.raw.includes('PROPONENT')) doc.setTextColor(...colors.cyan);
+              else if (data.cell.raw.includes('OPPONENT')) doc.setTextColor(...colors.red);
+              else doc.setTextColor(...colors.gray);
+            }
+          }
+          if (data.section === 'body' && data.column.index === 1) {
+               const textStr = data.cell.raw as string;
+               if (textStr.includes('SYSTEM NOTE: PENALTY APPLIED')) {
+                   doc.setFillColor(254, 242, 242); 
+               }
           }
         },
-        margin: { left: 40, right: 40 },
+        margin: { left: 40, right: 40, bottom: 40 },
       });
 
-      y = (doc as any).lastAutoTable.finalY + 40;
+      // ─── FOOTER (Page Numbers) ───
+      const pageCount = (doc as any).internal.getNumberOfPages();
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i);
+        doc.setFontSize(8);
+        doc.setTextColor(150, 150, 150);
+        doc.text(
+          `Page ${i} of ${pageCount} | AI Debate Arena`,
+          doc.internal.pageSize.getWidth() / 2,
+          doc.internal.pageSize.getHeight() - 20,
+          { align: 'center' }
+        );
+      }
+
+      const safeTopic = (topic || 'debate').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
+      doc.save(`Debate-Report_${safeTopic}.pdf`);
+      
+    } catch (criticalError) {
+      // 🔥 Catch any silent crashes and log them properly
+      console.error("PDF Generation Crashed:", criticalError);
+      alert("Failed to generate PDF. Please press F12 and check the Console for exact errors (like missing fonts).");
     }
-
-    // ─── FULL TRANSCRIPT TABLE ───
-    doc.setFontSize(16);
-    doc.setTextColor(...colors.primary);
-    doc.text('FULL DEBATE TRANSCRIPT', 40, y);
-    y += 15;
-
-    const transcriptBody = messages.map(m => {
-      const isPro = m.speaker === 'proponent';
-      const isOpp = m.speaker === 'opponent';
-      const label = isPro ? 'PROPONENT' : (isOpp ? 'OPPONENT' : 'JUDGE');
-      return [`[R${m.round}]\n${label}`, m.text];
-    });
-
-    autoTable(doc, {
-      startY: y,
-      head: [['Speaker', 'Argument / Statement']],
-      body: transcriptBody,
-      theme: 'grid',
-      styles: { font: 'NotoSans', cellPadding: 8, overflow: 'linebreak' }, // 🔥 हिंदी टेक्स्ट के लिए मुख्य स्टाइल
-      headStyles: { fillColor: colors.primary, textColor: 255 },
-      columnStyles: {
-        0: { cellWidth: 90, halign: 'center', valign: 'middle' },
-        1: { cellWidth: 'auto', fontSize: 10 }
-      },
-      willDrawCell: function(data) {
-        if (data.section === 'body' && data.column.index === 0) {
-          if (data.cell.raw && typeof data.cell.raw === 'string') {
-            if (data.cell.raw.includes('PROPONENT')) doc.setTextColor(...colors.cyan);
-            else if (data.cell.raw.includes('OPPONENT')) doc.setTextColor(...colors.red);
-            else doc.setTextColor(...colors.gray);
-          }
-        }
-        if (data.section === 'body' && data.column.index === 1) {
-             const textStr = data.cell.raw as string;
-             if (textStr.includes('SYSTEM NOTE: PENALTY APPLIED')) {
-                 doc.setFillColor(254, 242, 242); 
-             }
-        }
-      },
-      margin: { left: 40, right: 40, bottom: 40 },
-    });
-
-    // ─── FOOTER (Page Numbers) ───
-    const pageCount = (doc as any).internal.getNumberOfPages();
-    for (let i = 1; i <= pageCount; i++) {
-      doc.setPage(i);
-      doc.setFontSize(8);
-      doc.setTextColor(150, 150, 150);
-      doc.text(
-        `Page ${i} of ${pageCount} | AI Debate Arena`,
-        doc.internal.pageSize.getWidth() / 2,
-        doc.internal.pageSize.getHeight() - 20,
-        { align: 'center' }
-      );
-    }
-
-    const safeTopic = (topic || 'debate').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
-    doc.save(`Debate-Report_${safeTopic}.pdf`);
   };
 
   return (
