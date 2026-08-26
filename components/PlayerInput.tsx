@@ -77,8 +77,7 @@ export function PlayerInput({ waiting, onSubmit }: PlayerInputProps) {
         // 🔥 MASTER FIX: interimResults has been set to false. 
         // Now it will only type when you pause after speaking a sentence. This eliminates the Echo/Loop issue permanently.
         recognition.interimResults = false; 
-        
-        recognition.lang = 'hi-IN';
+        recognition.lang = 'en-US'; 
 
         recognition.onresult = (event: any) => {
           let sessionTranscript = '';
