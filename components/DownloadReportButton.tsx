@@ -18,7 +18,7 @@ export function DownloadReportButton({
   disabled,
 }: DownloadReportButtonProps) {
 
-  // 🛠️ Helper Function: Convert ArrayBuffer to Base64
+  // Helper Function: Convert ArrayBuffer to Base64 (Required by jsPDF)
   const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
     let binary = '';
     const bytes = new Uint8Array(buffer);
@@ -31,32 +31,30 @@ export function DownloadReportButton({
 
   const handleDownload = async () => {
     try {
-      // Dynamic imports to prevent SSR issues
+      // Dynamic imports to prevent SSR issues in Next.js
       const { jsPDF } = await import('jspdf');
       const autoTable = (await import('jspdf-autotable')).default;
       
       const doc = new jsPDF({ unit: 'pt', format: 'a4' });
 
-      // 🔥 MASTER FIX: Load custom Unicode font for multi-language support (e.g., Hindi)
-      try {
-        // ⚠️ CRUCIAL: Make sure 'NotoSans-Regular.ttf' exists in your public/fonts/ folder.
-        const response = await fetch('/fonts/NotoSans-Regular.ttf'); 
-        
-        // If the font file is missing, throw an error immediately to prevent HTML parsing crash
-        if (!response.ok) {
-          throw new Error(`Font file not found (Status: ${response.status}). Check public/fonts/ folder.`);
-        }
-        
-        const buffer = await response.arrayBuffer();
-        const base64Font = arrayBufferToBase64(buffer);
-        
-        doc.addFileToVFS('NotoSans.ttf', base64Font);
-        doc.addFont('NotoSans.ttf', 'NotoSans', 'normal');
-        doc.setFont('NotoSans'); // Set default font to NotoSans
-      } catch (error) {
-        console.warn("Custom font loading failed. Falling back to Helvetica.", error);
-        doc.setFont('helvetica');
+      // ─────────────────────────────────────────────────────────
+      // 🔥 STRICT FONT LOADING LOGIC (NO SILENT FALLBACK)
+      // ─────────────────────────────────────────────────────────
+      const fontUrl = '/fonts/NotoSans-Regular.ttf';
+      const response = await fetch(fontUrl); 
+      
+      // If the file is not found (404), STOP execution and alert the user
+      if (!response.ok) {
+        throw new Error("FONT_MISSING");
       }
+      
+      const buffer = await response.arrayBuffer();
+      const base64Font = arrayBufferToBase64(buffer);
+      
+      // Inject the Hindi Unicode Font into the PDF engine
+      doc.addFileToVFS('NotoSans.ttf', base64Font);
+      doc.addFont('NotoSans.ttf', 'NotoSans', 'normal');
+      doc.setFont('NotoSans'); // Set it as the active default font
       
       // ─── THEME COLORS ───
       const colors = {
@@ -74,7 +72,6 @@ export function DownloadReportButton({
       
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(22);
-      // Note: 'bold' style only works if a separate Bold.ttf is loaded. Using 'normal' here.
       doc.text('AI DEBATE ARENA', 40, 40);
       
       doc.setFontSize(10);
@@ -122,7 +119,7 @@ export function DownloadReportButton({
             ['OVERALL SCORE', scores.proponent.overall, scores.opponent.overall],
           ],
           theme: 'grid',
-          styles: { font: 'NotoSans' }, // 🔥 Apply custom font inside the table
+          styles: { font: 'NotoSans' }, // Crucial: Apply the font to the table body
           headStyles: { fillColor: colors.primary, textColor: 255 },
           columnStyles: {
             0: { cellWidth: 150 },
@@ -149,7 +146,7 @@ export function DownloadReportButton({
         
         y += 20;
 
-        // Summary
+        // Summary (Hindi text support enabled via NotoSans)
         doc.setFontSize(11);
         doc.setTextColor(50, 50, 50);
         const summaryLines = doc.splitTextToSize(`Summary: ${scores.summary}`, doc.internal.pageSize.getWidth() - 80);
@@ -188,7 +185,7 @@ export function DownloadReportButton({
           head: [['Round', 'Proponent Score', 'Opponent Score', 'Remarks / Penalties']],
           body: roundBody,
           theme: 'striped',
-          styles: { font: 'NotoSans' }, // 🔥 Apply custom font inside this table too
+          styles: { font: 'NotoSans' }, 
           headStyles: { fillColor: [71, 85, 105], textColor: 255 },
           columnStyles: {
             0: { cellWidth: 80 },
@@ -225,7 +222,7 @@ export function DownloadReportButton({
         head: [['Speaker', 'Argument / Statement']],
         body: transcriptBody,
         theme: 'grid',
-        styles: { font: 'NotoSans', cellPadding: 8, overflow: 'linebreak' }, // 🔥 Primary style for multi-language transcript text
+        styles: { font: 'NotoSans', cellPadding: 8, overflow: 'linebreak' }, // Critical for Hindi transcript
         headStyles: { fillColor: colors.primary, textColor: 255 },
         columnStyles: {
           0: { cellWidth: 90, halign: 'center', valign: 'middle' },
@@ -266,10 +263,15 @@ export function DownloadReportButton({
       const safeTopic = (topic || 'debate').slice(0, 40).replace(/[^a-z0-9]+/gi, '_');
       doc.save(`Debate-Report_${safeTopic}.pdf`);
       
-    } catch (criticalError) {
-      // 🔥 Catch any silent crashes and log them properly
+    } catch (criticalError: any) {
+      // 🔥 EXPLICIT ERROR HANDLING FOR MISSING FONT
       console.error("PDF Generation Crashed:", criticalError);
-      alert("Failed to generate PDF. Please press F12 and check the Console for exact errors (like missing fonts).");
+      
+      if (criticalError.message === "FONT_MISSING") {
+        alert("CRITICAL ERROR: Hindi Font File Not Found!\n\nTo fix this:\n1. Download 'NotoSansDevanagari-Regular.ttf' from Google Fonts.\n2. Rename it to 'NotoSans-Regular.ttf'\n3. Place it exactly inside your project at: public/fonts/NotoSans-Regular.ttf");
+      } else {
+        alert("Failed to generate PDF. Press F12 and check the Console for details.");
+      }
     }
   };
 
